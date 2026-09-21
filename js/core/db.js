@@ -1,16 +1,26 @@
 /**
  * Camada fina sobre o IndexedDB.
- * Cada tipo de dado tem seu próprio object store. Migrações ficam em `upgrade()`,
- * organizadas por versão — nunca apague um bloco antigo, apenas adicione o próximo.
+ * Migrações ficam em `upgrade()`, por versão. Nunca apague um bloco antigo; adicione o próximo.
+ * (O nome interno do banco continua "apenas-faca" para preservar os dados da primeira versão.)
  */
 
 const DB_NAME = 'apenas-faca';
-export const DB_VERSION = 1;
+export const DB_VERSION = 2;
 export const STORES = ['tasks', 'goals', 'areas', 'inbox', 'events', 'settings'];
 
 let dbPromise = null;
 
-function upgrade(db, oldVersion) {
+function eachRecord(store, fn) {
+  store.openCursor().onsuccess = (e) => {
+    const cursor = e.target.result;
+    if (!cursor) return;
+    const next = fn(cursor.value);
+    if (next) cursor.update(next);
+    cursor.continue();
+  };
+}
+
+function upgrade(db, oldVersion, tx) {
   if (oldVersion < 1) {
     db.createObjectStore('tasks', { keyPath: 'id' }).createIndex('status', 'status');
     db.createObjectStore('goals', { keyPath: 'id' });
@@ -21,7 +31,13 @@ function upgrade(db, oldVersion) {
     events.createIndex('entityId', 'entityId');
     db.createObjectStore('settings', { keyPath: 'key' });
   }
-  // if (oldVersion < 2) { ...próxima migração... }
+  if (oldVersion < 2 && oldVersion >= 1) {
+    // v2: tarefas ganham duração estimada e marcação de "próximo passo";
+    // metas ganham o tipo "tempo" (nenhum campo obrigatório novo).
+    eachRecord(tx.objectStore('tasks'), (t) => ({ estimateMin: null, nextStep: false, ...t, importance: t.importance || 'normal' }));
+    eachRecord(tx.objectStore('goals'), (g) => ({ unit: '', ...g }));
+    tx.objectStore('settings').put({ key: 'migratedFromV1At', value: Date.now() });
+  }
 }
 
 export function openDB() {
@@ -32,21 +48,15 @@ export function openDB() {
       return;
     }
     let req;
-    try {
-      req = indexedDB.open(DB_NAME, DB_VERSION);
-    } catch (err) {
-      reject(err);
-      return;
-    }
-    req.onupgradeneeded = (e) => upgrade(req.result, e.oldVersion);
+    try { req = indexedDB.open(DB_NAME, DB_VERSION); } catch (err) { reject(err); return; }
+    req.onupgradeneeded = (e) => upgrade(req.result, e.oldVersion, req.transaction);
     req.onsuccess = () => {
       const db = req.result;
-      // Outra aba abriu uma versão mais nova: fecha e recarrega para não corromper dados.
       db.onversionchange = () => { db.close(); location.reload(); };
       resolve(db);
     };
     req.onerror = () => reject(req.error || new Error('Não foi possível abrir o banco local.'));
-    req.onblocked = () => reject(new Error('O Apenas, Faça. está aberto em outra aba com uma versão antiga. Feche as outras abas e recarregue.'));
+    req.onblocked = () => reject(new Error('O Norte está aberto em outra aba com uma versão antiga. Feche as outras abas e recarregue.'));
   });
   dbPromise.catch(() => { dbPromise = null; });
   return dbPromise;
@@ -67,16 +77,9 @@ export async function readAll() {
   });
 }
 
-/**
- * Escrita atômica: tudo ou nada.
- * ops = { clear: [store], del: { store: [keys] }, put: { store: [records] } }
- */
+/** Escrita atômica: tudo ou nada. ops = { clear: [store], del: { store: [keys] }, put: { store: [records] } } */
 export async function write(ops) {
-  const names = new Set([
-    ...(ops.clear || []),
-    ...Object.keys(ops.del || {}),
-    ...Object.keys(ops.put || {}),
-  ]);
+  const names = new Set([...(ops.clear || []), ...Object.keys(ops.del || {}), ...Object.keys(ops.put || {})]);
   if (!names.size) return;
   const db = await openDB();
   return new Promise((resolve, reject) => {

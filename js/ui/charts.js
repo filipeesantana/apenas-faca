@@ -64,3 +64,86 @@ export function stepLineChart(points, { target, label, now = Date.now() }) {
       s('path', { d: area, class: 'linechart__area' }),
       s('path', { d, class: 'linechart__line', 'vector-effect': 'non-scaling-stroke' })));
 }
+
+/* ======================================================================
+   Gráficos de metas e planejamento
+   ====================================================================== */
+
+/**
+ * Projeção: histórico real, linha planejada (até a data escolhida),
+ * linha do ritmo recente e linha do objetivo. Textos ficam em HTML para
+ * não distorcer quando o gráfico estica.
+ */
+export function projectionChart({ history, model, formatValue, formatDate, label }) {
+  const W = 1000; const H = 260; const PAD_T = 18; const PAD_B = 8;
+  const { startTs, now, endTs, horizon, current, target, recentPerDay } = model;
+  const t0 = startTs;
+  const t1 = Math.max(horizon, now + 1);
+  const vmax = Math.max(target, ...history.map((p) => p.v), 1) * 1.06;
+  const x = (t) => ((t - t0) / (t1 - t0)) * W;
+  const y = (v) => H - PAD_B - (v / vmax) * (H - PAD_T - PAD_B);
+  const pct = (t) => `${Math.max(0, Math.min(100, ((t - t0) / (t1 - t0)) * 100))}%`;
+
+  let hist = `M${x(history[0].t)},${y(history[0].v)}`;
+  for (let i = 1; i < history.length; i++) hist += ` H${x(history[i].t)} V${y(history[i].v)}`;
+  hist += ` H${x(now)}`;
+
+  const layers = [
+    s('line', { x1: 0, x2: W, y1: y(target), y2: y(target), class: 'pj__target', 'vector-effect': 'non-scaling-stroke' }),
+    s('line', { x1: x(now), x2: x(now), y1: PAD_T - 10, y2: H - PAD_B, class: 'pj__today', 'vector-effect': 'non-scaling-stroke' }),
+    s('path', { d: `${hist} V${H - PAD_B} H${x(history[0].t)} Z`, class: 'pj__area' }),
+    s('path', { d: hist, class: 'pj__hist', 'vector-effect': 'non-scaling-stroke' }),
+  ];
+  if (endTs && endTs > now && current < target) {
+    layers.push(s('line', { x1: x(now), y1: y(current), x2: x(endTs), y2: y(target), class: 'pj__plan', 'vector-effect': 'non-scaling-stroke' }));
+  }
+  if (recentPerDay > 0 && current < target) {
+    const tEnd = Math.min(t1, now + ((target - current) / recentPerDay) * 86400000);
+    const vEnd = current + recentPerDay * ((tEnd - now) / 86400000);
+    layers.push(s('line', { x1: x(now), y1: y(current), x2: x(tEnd), y2: y(Math.min(vEnd, target)), class: 'pj__recent', 'vector-effect': 'non-scaling-stroke' }));
+  }
+
+  const legend = [
+    h('span', { class: 'lg lg--hist' }, 'Seu histórico'),
+    endTs && endTs > now && current < target && h('span', { class: 'lg lg--plan' }, 'Ritmo planejado'),
+    recentPerDay > 0 && current < target && h('span', { class: 'lg lg--recent' }, 'Ritmo recente'),
+    h('span', { class: 'lg lg--target' }, 'Objetivo'),
+  ];
+
+  return h('figure', { class: 'pj', role: 'img', 'aria-label': label },
+    h('div', { class: 'pj__legend', 'aria-hidden': 'true' }, legend),
+    h('div', { class: 'pj__frame' },
+      h('span', { class: 'pj__ylabel', style: { top: `${(y(target) / H) * 100}%` }, 'aria-hidden': 'true' }, formatValue(target)),
+      h('span', { class: ['pj__ylabel pj__ylabel--now', (now - t0) / (t1 - t0) < 0.12 && 'is-start', (now - t0) / (t1 - t0) > 0.88 && 'is-end'], style: { top: `${(y(current) / H) * 100}%`, left: pct(now) }, 'aria-hidden': 'true' }, formatValue(current)),
+      s('svg', { viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: 'none', class: 'pj__svg', 'aria-hidden': 'true' }, layers)),
+    h('div', { class: 'pj__axis', 'aria-hidden': 'true' },
+      (now - t0) / (t1 - t0) > 0.14 && h('span', { style: { left: '0%' } }, formatDate(t0)),
+      h('span', { class: ['pj__axis-now', (now - t0) / (t1 - t0) < 0.14 && 'is-start'], style: { left: pct(now) } }, 'hoje'),
+      h('span', { style: { left: '100%' }, class: 'pj__axis-end' }, formatDate(t1))));
+}
+
+/** Lista de cenários com barra proporcional ao esforço (ritmo). */
+export function scenarioList(rows, { onSelect, selectedId, label }) {
+  const top = Math.max(...rows.map((r) => r.weight || 0), 1e-9);
+  return h('ul', { class: 'scen', 'aria-label': label },
+    rows.map((r) => h('li', null, h('button', {
+      type: 'button', class: 'scen__row', 'aria-pressed': String(r.id === selectedId), onClick: () => onSelect?.(r),
+    },
+    h('span', { class: 'scen__label' }, r.label),
+    h('span', { class: 'scen__track', 'aria-hidden': 'true' }, h('span', { class: 'scen__fill', style: { width: `${Math.max(4, ((r.weight || 0) / top) * 100)}%` } })),
+    h('span', { class: 'scen__value' }, r.value)))));
+}
+
+/** Planejado × realizado por semana: barra empilhada + números por extenso. */
+export function planRows(weeks, { tick, label }) {
+  const top = Math.max(1, ...weeks.map((w) => w.planned));
+  const seg = (n, cls) => (n ? h('span', { class: `pr__seg pr__seg--${cls}`, style: { width: `${(n / top) * 100}%` } }) : null);
+  return h('div', { class: 'pr', role: 'img', 'aria-label': label },
+    h('div', { class: 'pr__legend', 'aria-hidden': 'true' },
+      h('span', { class: 'lg2 lg2--done' }, 'Concluídas'), h('span', { class: 'lg2 lg2--postponed' }, 'Adiadas'),
+      h('span', { class: 'lg2 lg2--dropped' }, 'Canceladas'), h('span', { class: 'lg2 lg2--pending' }, 'Pendentes')),
+    weeks.map((w) => h('div', { class: ['pr__row', w.current && 'is-current'] },
+      h('span', { class: 'pr__label' }, tick(w)),
+      h('span', { class: 'pr__bar', 'aria-hidden': 'true' }, seg(w.done, 'done'), seg(w.postponed, 'postponed'), seg(w.dropped, 'dropped'), seg(w.pending, 'pending')),
+      h('span', { class: 'pr__nums' }, w.planned ? `${w.done} de ${w.planned}` : '—'))));
+}

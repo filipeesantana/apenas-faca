@@ -3,24 +3,24 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Apenas, Faça.</title>
-  <meta name="description" content="Sistema pessoal de execução e acompanhamento. Tire da cabeça, decida, faça e perceba seu progresso.">
-  <meta name="theme-color" content="#F5F3EE">
+  <title>Norte</title>
+  <meta name="description" content="Norte — Apenas, faça. Um sistema pessoal para organizar o que importa, executar e acompanhar seu progresso.">
+  <meta name="theme-color" content="#F4F3EF">
   <meta name="color-scheme" content="light dark">
-  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="assets/icon.svg">
+  <link rel="icon" href="./assets/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./assets/icon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap">
-  <link rel="stylesheet" href="css/tokens.css">
-  <link rel="stylesheet" href="css/base.css">
-  <link rel="stylesheet" href="css/layout.css">
-  <link rel="stylesheet" href="css/components.css">
-  <link rel="stylesheet" href="css/views.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap">
+  <link rel="stylesheet" href="./css/tokens.css">
+  <link rel="stylesheet" href="./css/base.css">
+  <link rel="stylesheet" href="./css/layout.css">
+  <link rel="stylesheet" href="./css/components.css">
+  <link rel="stylesheet" href="./css/views.css">
   <script>
     // Aplica o tema salvo antes da primeira pintura (evita "piscar" claro/escuro).
     try {
-      var t = localStorage.getItem('af-theme');
+      var t = localStorage.getItem('norte-theme') || localStorage.getItem('af-theme');
       if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
     } catch (e) {}
   </script>
@@ -35,8 +35,8 @@
   </div>
   <div id="toasts" class="toasts" aria-live="polite" aria-atomic="false"></div>
   <noscript>
-    <p style="padding:24px;font-family:sans-serif">O Apenas, Faça. precisa de JavaScript ativado para funcionar.</p>
+    <p style="padding:24px;font-family:sans-serif">O Norte precisa de JavaScript ativado para funcionar.</p>
   </noscript>
-  <script type="module" src="js/app.js"></script>
+  <script type="module" src="./js/app.js"></script>
 </body>
 </html>

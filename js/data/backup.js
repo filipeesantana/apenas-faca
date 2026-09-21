@@ -3,8 +3,9 @@ import { state, commit, replaceAll } from '../core/store.js';
 import { DB_VERSION } from '../core/db.js';
 import { today, isValidISODate } from '../utils/dates.js';
 
-export const BACKUP_FORMAT = 1;
-const APP_ID = 'apenas-faca';
+export const BACKUP_FORMAT = 2;
+const APP_ID = 'norte';
+const LEGACY_IDS = ['apenas-faca']; // backups da primeira versão continuam aceitos
 
 export function buildBackup() {
   return {
@@ -30,7 +31,7 @@ export async function exportBackup() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `apenas-faca-backup-${today()}.json`;
+  a.download = `norte-backup-${today()}.json`;
   document.body.append(a);
   a.click();
   a.remove();
@@ -45,24 +46,26 @@ const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 /** Normaliza registros, preenchendo campos que versões futuras/antigas possam não ter. */
 function normalizeTask(t) {
   return {
-    notes: '', areaId: null, goalId: null, importance: 'normal', dueDate: null, startedAt: null,
-    completedAt: null, droppedAt: null, postponedCount: 0, source: 'direct', updatedAt: t.createdAt, ...t,
+    notes: '', areaId: null, goalId: null, importance: 'normal', startedAt: null,
+    completedAt: null, droppedAt: null, postponedCount: 0, source: 'direct', updatedAt: t.createdAt, estimateMin: null, nextStep: false, ...t,
     dueDate: isValidISODate(t.dueDate) ? t.dueDate : null,
   };
 }
 function normalizeGoal(g) {
-  return { notes: '', areaId: null, unit: '', steps: [], targetDate: null, milestonesReached: [], completedAt: null, updatedAt: g.createdAt, currentValue: 0, ...g,
+  return { notes: '', areaId: null, unit: '', steps: [], milestonesReached: [], completedAt: null, updatedAt: g.createdAt, currentValue: 0, ...g,
     targetDate: isValidISODate(g.targetDate) ? g.targetDate : null };
 }
 
-/** Migração entre formatos de backup (hoje só existe o formato 1). */
+/** Migração entre formatos. Formato 1 (Apenas, Faça.) → 2 (Norte): campos novos recebem padrões. */
 function migrate(obj) {
-  // if (obj.format === 1) { ...converter para 2...; obj.format = 2; }
+  if (obj.format === 1) {
+    obj = { ...obj, format: 2, data: { ...obj.data, tasks: (obj.data?.tasks || []).map((t) => ({ estimateMin: null, nextStep: false, ...t })) } };
+  }
   return obj;
 }
 
 export function validateBackup(raw) {
-  if (!isObj(raw) || raw.app !== APP_ID) return { ok: false, error: 'Este arquivo não parece ser um backup do Apenas, Faça.' };
+  if (!isObj(raw) || (raw.app !== APP_ID && !LEGACY_IDS.includes(raw.app))) return { ok: false, error: 'Este arquivo não parece ser um backup do Norte.' };
   if (!isNum(raw.format)) return { ok: false, error: 'O arquivo não informa a versão do backup.' };
   if (raw.format > BACKUP_FORMAT) return { ok: false, error: 'Este backup foi criado por uma versão mais nova do aplicativo.' };
   const obj = migrate(raw);
@@ -74,9 +77,9 @@ export function validateBackup(raw) {
   const bad = (list, test) => list.findIndex((r) => !isObj(r) || !test(r));
   const checks = [
     ['tarefas', d.tasks, (t) => isStr(t.id) && typeof t.title === 'string' && ['pending', 'doing', 'done', 'dropped'].includes(t.status) && isNum(t.createdAt)],
-    ['metas', d.goals, (g) => isStr(g.id) && typeof g.title === 'string' && ['money', 'count', 'steps'].includes(g.type) && ['active', 'done', 'archived'].includes(g.status) && isNum(g.createdAt)],
+    ['metas', d.goals, (g) => isStr(g.id) && typeof g.title === 'string' && ['money', 'count', 'time', 'steps'].includes(g.type) && ['active', 'done', 'archived'].includes(g.status) && isNum(g.createdAt)],
     ['áreas', d.areas, (a) => isStr(a.id) && isStr(a.name)],
-    ['caixa de entrada', d.inbox, (i) => isStr(i.id) && typeof i.text === 'string' && isNum(i.createdAt)],
+    ['anotações', d.inbox, (i) => isStr(i.id) && typeof i.text === 'string' && isNum(i.createdAt)],
     ['histórico', d.events, (e) => isStr(e.id) && isStr(e.type) && isNum(e.createdAt)],
   ];
   for (const [label, list, test] of checks) {

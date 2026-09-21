@@ -1,4 +1,4 @@
-/** "Tirar da cabeça": captura rápida disponível de qualquer lugar (atalho N). */
+/** Anotação rápida: guardar algo sem decidir nada agora. */
 import { h } from '../ui/dom.js';
 import { openSheet } from '../ui/sheet.js';
 import { button } from '../ui/components.js';
@@ -6,12 +6,13 @@ import { capture } from '../domain/inbox.js';
 import { toast, toastError } from '../ui/toast.js';
 import { plural } from '../utils/numbers.js';
 import { openOrganizer } from './inbox-organizer.js';
+import { pickCopy } from '../content/microcopy.js';
 
 export async function captureWithFeedback(text) {
   try {
     const items = await capture(text);
     if (!items.length) return items;
-    toast(items.length === 1 ? 'Guardado na caixa de entrada.' : `${plural(items.length, 'item guardado', 'itens guardados')} na caixa de entrada.`, {
+    toast(items.length === 1 ? 'Anotação guardada.' : `${plural(items.length, 'anotação guardada', 'anotações guardadas')}.`, {
       action: { label: 'Organizar', fn: () => openOrganizer(items[0].id) },
     });
     return items;
@@ -19,10 +20,11 @@ export async function captureWithFeedback(text) {
 }
 
 /** Área de texto de captura reutilizável: Enter guarda, Shift+Enter quebra linha. */
-export function captureBox({ key, placeholder = 'O que está ocupando sua cabeça?', big = false, autofocus = false, onDone, buttonLabel = 'Guardar' } = {}) {
+export function captureBox({ key, placeholder, big = false, autofocus = false, onDone, buttonLabel = 'Guardar' } = {}) {
+  placeholder = placeholder || pickCopy('capture');
   const ta = h('textarea', {
     class: ['capture__input', big && 'capture__input--big'], rows: big ? 3 : 1, 'data-key': key, placeholder,
-    'aria-label': 'Tirar algo da cabeça', maxlength: 5000, autofocus,
+    'aria-label': 'Anotação rápida', maxlength: 5000, autofocus,
     onInput: (e) => grow(e.target),
     onKeydown: (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); submit(); } },
   });
@@ -46,11 +48,11 @@ function grow(el) {
 
 export function openCapture() {
   const sheet = openSheet({
-    title: 'Tirar da cabeça',
+    title: 'Anotação rápida',
     variant: 'dialog',
     focus: 'textarea',
     render: () => h('div', { class: 'capture-sheet' },
-      h('p', { class: 'muted' }, 'Escreva do jeito que vier. Uma coisa por linha — você decide o que fazer com cada uma depois.'),
+      h('p', { class: 'muted' }, 'Guarde agora e decida depois se vira tarefa, meta ou só um lembrete. Uma coisa por linha.'),
       captureBox({ key: 'capture-sheet', big: true, onDone: (items) => { if (items.length) sheet.close(); } }),
       h('p', { class: 'hint' }, 'Enter guarda · Shift + Enter quebra a linha')),
   });

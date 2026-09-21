@@ -12,7 +12,7 @@ import { relativeTime, daysAgoTs } from '../utils/dates.js';
 import { plural } from '../utils/numbers.js';
 import { toastError, toast } from '../ui/toast.js';
 import { taskList } from './task-row.js';
-import { goalCard } from './goals.js';
+import { goalRow } from './goals.js';
 
 export function areaView(route) {
   const area = getArea(route.param);
@@ -43,5 +43,5 @@ export function areaView(route) {
       }, input, button('Adicionar', { type: 'submit', icon: 'plus' }))),
     h('section', { class: 'section' },
       sectionHead('Metas', { count: goals.length }),
-      goals.length ? h('div', { class: 'goal-grid' }, goals.map(goalCard)) : h('p', { class: 'muted' }, 'Nenhuma meta ativa nesta área.')));
+      goals.length ? h('ul', { class: 'goal-list' }, goals.map((g) => h('li', null, goalRow(g)))) : h('p', { class: 'muted' }, 'Nenhuma meta ativa nesta área.')));
 }

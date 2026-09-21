@@ -86,3 +86,41 @@ export const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
 const TIMES = ['nenhuma vez', 'uma vez', 'duas vezes', 'três vezes', 'quatro vezes', 'cinco vezes', 'seis vezes'];
 export const timesText = (n) => TIMES[n] || `${n} vezes`;
+
+/* ---------- Tempo (armazenado em minutos inteiros) ---------- */
+
+/** 500 → "8h20" · 45 → "45 min" · 120 → "2h" */
+export function formatMinutes(min) {
+  if (!Number.isFinite(min)) return '—';
+  const m = Math.round(Math.abs(min));
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  const sign = min < 0 ? '−' : '';
+  if (!h) return `${sign}${r} min`;
+  return `${sign}${h}h${r ? String(r).padStart(2, '0') : ''}`;
+}
+
+/** Texto por extenso para ritmos: "34 minutos", "4 horas", "1 hora e 30 minutos". */
+export function formatMinutesLong(min) {
+  const m = Math.round(min);
+  if (m < 60) return `${m} ${m === 1 ? 'minuto' : 'minutos'}`;
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  const hs = `${h} ${h === 1 ? 'hora' : 'horas'}`;
+  if (r < 5) return hs;
+  return `${hs} e ${r} minutos`;
+}
+
+/** Aceita "1h30", "1:30", "90", "90 min", "1,5h", "2 h". Números puros são minutos. */
+export function parseDuration(input) {
+  if (input == null) return null;
+  const s = String(input).trim().toLowerCase().replace(/\s+/g, '');
+  if (!s) return null;
+  let m = s.match(/^(\d+)[:h](\d{1,2})(m|min)?$/);
+  if (m) return Number(m[1]) * 60 + Number(m[2]);
+  m = s.match(/^(\d+(?:[.,]\d+)?)(h|hora|horas)$/);
+  if (m) return Math.round(Number(m[1].replace(',', '.')) * 60);
+  m = s.match(/^(\d+)(m|min|minutos?)?$/);
+  if (m) return Number(m[1]);
+  return null;
+}

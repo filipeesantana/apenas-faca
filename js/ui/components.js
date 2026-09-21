@@ -1,5 +1,5 @@
 /** Componentes visuais reutilizáveis. */
-import { h } from './dom.js';
+import { h, s } from './dom.js';
 import { icon } from './icons.js';
 import { getArea } from '../domain/areas.js';
 import { clamp } from '../utils/helpers.js';
@@ -17,8 +17,18 @@ export function iconButton(name, label, onClick, attrs = {}) {
   return h('button', { type: 'button', class: 'icon-btn', 'aria-label': label, title: label, onClick, ...attrs }, icon(name));
 }
 
-export function brandMark() {
-  return h('span', { class: 'wordmark' }, 'Apenas', h('span', { class: 'wordmark__comma' }, ','), ' Faça', h('span', { class: 'wordmark__dot' }, '.'));
+/** Marca: agulha discreta (norte) + nome + assinatura menor. */
+export function logoMark(size = 22) {
+  return s('svg', { viewBox: '0 0 24 24', width: size, height: size, class: 'logo', 'aria-hidden': 'true', focusable: 'false' },
+    s('path', { d: 'M12 2.5 15.2 12H8.8z', class: 'logo__n' }),
+    s('path', { d: 'M8.8 12h6.4L12 21.5z', class: 'logo__s' }));
+}
+
+export function brandMark({ signature = true } = {}) {
+  return h('span', { class: 'brand-mark' }, logoMark(),
+    h('span', { class: 'brand-mark__text' },
+      h('span', { class: 'brand-mark__name' }, 'Norte'),
+      signature && h('span', { class: 'brand-mark__sig' }, 'Apenas, faça.')));
 }
 
 export function areaTag(areaId, { link = false } = {}) {

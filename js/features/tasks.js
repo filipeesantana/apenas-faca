@@ -6,12 +6,15 @@ import { go } from '../core/router.js';
 import { allTasks, openTasks, isOverdue, groupOpenTasks, createTask, DUE_PRESETS } from '../domain/tasks.js';
 import { rankTasks } from '../domain/priority.js';
 import { listAreas, getArea } from '../domain/areas.js';
-import { dayKey, daysAgoTs, formatDay, today, diffDays } from '../utils/dates.js';
+import { endOfWeek, dayKey, daysAgoTs, formatDay, formatDayLong, distanceText, today, diffDays } from '../utils/dates.js';
 import { toast, toastError } from '../ui/toast.js';
 import { taskList } from './task-row.js';
 import { openReview } from './review.js';
 import { openTaskSheet } from './task-sheet.js';
 import { capitalize } from '../utils/helpers.js';
+import { labelWithHelp, HELP } from '../ui/help.js';
+import { pickCopy } from '../content/microcopy.js';
+import { openTaskForm } from './task-form.js';
 
 const GROUPS = [
   ['doing', 'Em andamento'],
@@ -24,13 +27,14 @@ const GROUPS = [
 
 const SPECIAL = {
   atrasadas: { label: 'Atrasadas', test: (t) => isOverdue(t) },
-  travadas: { label: 'Adiadas 3 vezes ou mais', test: (t) => (t.postponedCount || 0) >= 3 },
+  travadas: { label: 'Adiadas 2 vezes ou mais', test: (t) => (t.postponedCount || 0) >= 2 },
   'sem-prazo': { label: 'Sem prazo', test: (t) => !t.dueDate },
-  importantes: { label: 'Importantes', test: (t) => t.importance === 'high' },
+  importantes: { label: 'Alta importância', test: (t) => t.importance === 'high' },
+  semana: { label: 'Prazo nesta semana', test: (t) => t.dueDate && t.dueDate <= endOfWeek() },
 };
 
 /** Rascunho da criação rápida (sobrevive a re-renderizações). */
-const draft = { dueDate: null, dueId: null, areaId: null, importance: 'normal' };
+const draft = { dueDate: null, dueId: null };
 
 function buildHash(query) {
   const qs = new URLSearchParams(Object.entries(query).filter(([, v]) => v)).toString();
@@ -39,21 +43,23 @@ function buildHash(query) {
 
 export function tasksView(route) {
   const q = route.query;
-  const tab = ['concluidas', 'deixadas'].includes(q.ver) ? q.ver : 'abertas';
+  const tab = ['concluidas', 'canceladas'].includes(q.ver) ? q.ver : 'abertas';
   const areaId = q.area && getArea(q.area) ? q.area : null;
   const special = SPECIAL[q.f] ? q.f : null;
 
   const open = openTasks();
   const view = h('div', { class: 'view view--tasks' },
-    pageHead('Tarefas', open.length ? `${open.length} ${open.length === 1 ? 'aberta' : 'abertas'}` : 'Coisas que você precisa fazer.',
-      open.length >= 8 && button('Revisar lista', { icon: 'refresh', onClick: () => openReview() })),
+    pageHead(labelWithHelp('Tarefas', HELP.tarefa, { className: '' }),
+      `${open.length ? `${open.length} ${open.length === 1 ? 'aberta' : 'abertas'} · ` : ''}${pickCopy('tasks', [open.length >= 20 ? 'overloaded' : !open.length ? 'clear' : 'any'])}`,
+      [open.length >= 5 && button('Revisar meu plano', { icon: 'refresh', onClick: () => openReview() }),
+        button('Nova tarefa', { variant: 'primary', icon: 'plus', onClick: () => openTaskForm({ areaId }) })]),
     quickAdd(areaId));
 
   add(view, h('div', { class: 'toolbar' },
     segmented([
       { value: 'abertas', label: 'Abertas' },
       { value: 'concluidas', label: 'Concluídas' },
-      { value: 'deixadas', label: 'Deixadas de lado' },
+      { value: 'canceladas', label: 'Canceladas' },
     ], tab, (v) => go(buildHash({ ...q, ver: v === 'abertas' ? null : v, f: null })), { label: 'Mostrar' }),
     areaFilter(q, areaId)));
 
@@ -79,37 +85,40 @@ function areaFilter(q, areaId) {
 }
 
 function quickAdd(areaId) {
-  if (areaId && draft.areaId == null) draft.areaId = areaId;
+  const readout = h('span', { class: 'quick-add__readout' });
+  const paint = () => readout.replaceChildren(draft.dueDate ? `${capitalize(formatDayLong(draft.dueDate))} · ${distanceText(draft.dueDate)}` : '');
   const input = h('input', {
-    class: 'quick-add__input', 'data-key': 'quick-add', placeholder: 'Adicionar tarefa… (ex.: Estudar Python)', maxlength: 300,
-    'aria-label': 'Nova tarefa', autocomplete: 'off',
+    class: 'quick-add__input', 'data-key': 'quick-add', placeholder: 'Adicionar tarefa… Ex.: Pagar internet', maxlength: 300,
+    'aria-label': 'Nome da nova tarefa', autocomplete: 'off',
     onInput: (e) => form.classList.toggle('has-text', !!e.target.value.trim()),
     onKeydown: (e) => { if (e.key === 'Escape') { e.target.value = ''; form.classList.remove('has-text'); } },
   });
   const dateInput = h('input', {
     type: 'date', class: 'input input--date', 'aria-label': 'Escolher data', min: today(),
     value: draft.dueId === 'custom' ? draft.dueDate : '',
-    onChange: (e) => { draft.dueDate = e.target.value || null; draft.dueId = e.target.value ? 'custom' : null; dueChips.querySelectorAll('.chip').forEach((c) => c.setAttribute('aria-pressed', 'false')); },
+    onChange: (e) => { draft.dueDate = e.target.value || null; draft.dueId = e.target.value ? 'custom' : null; dueChips.querySelectorAll('.chip').forEach((c) => c.setAttribute('aria-pressed', 'false')); paint(); },
   });
   const dueChips = chipGroup(DUE_PRESETS.map((p) => ({ value: p.id, label: p.label })), draft.dueId === 'custom' ? null : draft.dueId, (v) => {
     draft.dueId = v;
     draft.dueDate = v ? DUE_PRESETS.find((p) => p.id === v).date() : null;
     dateInput.value = '';
+    paint();
   }, { label: 'Prazo', allowNone: true });
+  paint();
 
   const form = h('form', {
-    class: ['quick-add', (draft.dueDate || draft.importance === 'high') && 'has-text'],
+    class: ['quick-add', draft.dueDate && 'has-text'],
     onSubmit: async (e) => {
       e.preventDefault();
       const title = input.value.trim();
       if (!title) { input.focus(); return; }
       input.value = '';
       form.classList.remove('has-text');
-      const payload = { title, dueDate: draft.dueDate, areaId: draft.areaId, importance: draft.importance };
-      Object.assign(draft, { dueDate: null, dueId: null, importance: 'normal', areaId: areaId || null });
+      const payload = { title, dueDate: draft.dueDate, areaId };
+      Object.assign(draft, { dueDate: null, dueId: null });
       try {
         const t = await createTask(payload);
-        toast(`Tarefa criada${t.dueDate ? '' : ' — sem prazo, e tudo bem'}.`, { action: { label: 'Detalhes', fn: () => openTaskSheet(t.id) } });
+        toast('Tarefa adicionada.', { action: { label: 'Detalhes', fn: () => openTaskSheet(t.id) } });
       } catch (err) { toastError(err); }
     },
   },
@@ -118,15 +127,11 @@ function quickAdd(areaId) {
     input,
     button('Adicionar', { variant: 'primary', type: 'submit', size: 'sm' })),
   h('div', { class: 'quick-add__extras' },
-    h('span', { class: 'quick-add__hint' }, 'Opcional:'),
-    dueChips, dateInput,
-    h('label', { class: 'toggle-chip' },
-      h('input', { type: 'checkbox', checked: draft.importance === 'high', onChange: (e) => { draft.importance = e.target.checked ? 'high' : 'normal'; } }),
-      h('span', null, icon('flag', { size: 14 }), 'Importante')),
-    h('select', {
-      class: 'input input--select input--sm', 'aria-label': 'Área',
-      onChange: (e) => { draft.areaId = e.target.value || null; },
-    }, h('option', { value: '' }, 'Sem área'), listAreas().map((a) => h('option', { value: a.id, selected: a.id === draft.areaId }, a.name)))));
+    h('span', { class: 'quick-add__hint' }, 'Prazo (opcional):'), dueChips, dateInput, readout,
+    button('Adicionar detalhes', {
+      variant: 'ghost', size: 'sm', icon: 'plus',
+      onClick: () => { const title = input.value; input.value = ''; form.classList.remove('has-text'); openTaskForm({ title, dueDate: draft.dueDate, areaId, showDetails: true }); },
+    })));
   return form;
 }
 
@@ -141,9 +146,9 @@ function openList(open, { areaId, special }) {
     }
     return emptyState({
       icon: 'check',
-      title: allTasks().length ? 'Nada pendente por aqui.' : 'Sua lista está vazia.',
-      text: 'Se alguma coisa está ocupando sua cabeça, coloque na caixa de entrada — ou escreva uma tarefa acima.',
-      actions: [button('Tirar algo da cabeça', { variant: 'primary', icon: 'inbox', onClick: () => go('entrada') })],
+      title: allTasks().length ? 'Nada pendente por aqui.' : 'Nenhuma tarefa ainda.',
+      text: pickCopy('emptyTasks'),
+      actions: [button('Adicionar tarefa', { variant: 'primary', icon: 'plus', onClick: () => openTaskForm() })],
     });
   }
 
@@ -171,8 +176,8 @@ function closedList(tab, areaId) {
   if (!tasks.length) {
     return emptyState({
       icon: status === 'done' ? 'check' : 'ban',
-      title: status === 'done' ? 'Nenhuma tarefa concluída nos últimos 60 dias.' : 'Nada foi deixado de lado.',
-      text: status === 'done' ? 'Quando você concluir algo, aparece aqui.' : 'Quando uma tarefa perde o sentido, dá para escolher “Não vou fazer”. Ela vem para cá.',
+      title: status === 'done' ? 'Nenhuma tarefa concluída nos últimos 60 dias.' : 'Nenhuma tarefa cancelada.',
+      text: status === 'done' ? 'Quando você concluir algo, aparece aqui.' : 'Quando uma tarefa perde o sentido, use “Cancelar tarefa”. Ela vem para cá, e o histórico fica registrado.',
       compact: true,
     });
   }

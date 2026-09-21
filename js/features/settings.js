@@ -13,14 +13,15 @@ import { relativeTime, formatDateTime } from '../utils/dates.js';
 import { plural } from '../utils/numbers.js';
 
 export const APP_VERSION = '1.0.0';
+export const APP_NAME = 'Norte';
 
 export function applyTheme(theme = 'system') {
   const root = document.documentElement;
   if (theme === 'light' || theme === 'dark') root.dataset.theme = theme;
   else delete root.dataset.theme;
-  try { localStorage.setItem('af-theme', theme); } catch { /* armazenamento indisponível */ }
+  try { localStorage.setItem('norte-theme', theme); } catch { /* armazenamento indisponível */ }
   const dark = theme === 'dark' || (theme !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
-  document.querySelector('meta[name="theme-color"]:not([media])')?.setAttribute('content', dark ? '#131210' : '#F5F3EE');
+  document.querySelector('meta[name="theme-color"]:not([media])')?.setAttribute('content', dark ? '#121415' : '#F4F3EF');
 }
 
 export async function loadDemoWithConfirm() {
@@ -84,7 +85,7 @@ export function settingsView() {
 
   add(view, h('section', { class: 'card section' },
     sectionHead('Seus dados'),
-    h('p', { class: 'muted' }, 'Tudo fica salvo apenas neste navegador, neste aparelho. Nada é enviado para servidor nenhum. Faça backups de vez em quando — especialmente antes de limpar dados do navegador ou trocar de aparelho.'),
+    h('p', { class: 'muted' }, 'Tudo fica salvo apenas neste navegador, neste aparelho. Nada é enviado para a internet. Faça backups de vez em quando — principalmente antes de limpar dados do navegador ou trocar de aparelho.'),
     h('p', { class: 'small' }, s.lastExportAt ? `Último backup: ${relativeTime(s.lastExportAt)}.` : 'Você ainda não fez nenhum backup.'),
     h('div', { class: 'row-actions' },
       button('Exportar backup', { variant: 'primary', icon: 'download', onClick: () => exportBackup().then(() => toast('Backup exportado.')).catch(toastError) }),
@@ -98,7 +99,7 @@ export function settingsView() {
       ? [h('p', { class: 'muted' }, 'Você está vendo dados de exemplo. Quando quiser começar de verdade, limpe tudo.'),
         h('div', { class: 'row-actions' }, button('Limpar exemplos e começar', { variant: 'primary', onClick: async () => {
           const ok = await confirmDialog({ title: 'Limpar os dados de exemplo?', message: 'Tudo o que está aqui será apagado e você começa do zero.', confirmLabel: 'Limpar e começar', danger: true });
-          if (ok) { await clearAll(); toast('Tudo limpo. Comece tirando algo da cabeça.'); }
+          if (ok) { await clearAll(); toast('Tudo limpo. Comece adicionando algo.'); }
         } }))]
       : [h('p', { class: 'muted' }, 'Quer ver como o sistema fica depois de algumas semanas de uso? Carregue um conjunto de exemplo — ele substitui os dados atuais.'),
         h('div', { class: 'row-actions' }, button('Carregar dados de exemplo', { icon: 'layers', onClick: () => loadDemoWithConfirm().catch(toastError) }))]));
@@ -111,10 +112,16 @@ export function settingsView() {
       if (ok) { await clearAll(); toast('Dados apagados.'); }
     } }))));
 
+  add(view, h('section', { class: 'card section' },
+    sectionHead('Ajuda'),
+    h('p', { class: 'muted' }, 'Respostas curtas sobre tarefas, metas, próximo passo, prioridades, projeções e backup.'),
+    h('div', { class: 'row-actions' }, h('a', { class: 'btn btn--secondary', href: '#/ajuda' }, icon('info', { size: 18 }), h('span', null, 'Abrir a ajuda')))));
+
   add(view, h('section', { class: 'about' },
-    h('p', null, h('strong', null, 'Apenas, Faça.'), ` · versão ${APP_VERSION}`),
-    h('p', { class: 'muted small' }, 'Sistema pessoal de execução e acompanhamento. Funciona inteiramente no seu navegador, sem conta e sem servidor.'),
-    h('p', { class: 'muted small' }, 'Atalho: tecla N abre “Tirar da cabeça” de qualquer tela.'),
+    h('p', null, h('strong', null, 'Norte'), ` · versão ${APP_VERSION}`),
+    h('p', { class: 'muted small' }, 'Apenas, faça. — Sistema pessoal de execução e acompanhamento. Funciona inteiramente no seu navegador, sem conta e sem servidor.'),
+    h('p', { class: 'muted small' }, 'Atalho no computador: tecla N abre “Adicionar” de qualquer tela.'),
+    s.migratedFromV1At && h('p', { class: 'muted small' }, 'Seus dados da versão anterior (Apenas, Faça.) foram preservados.'),
     h('p', { class: 'muted small' }, 'Desenvolvido por Filipe Santana')));
   return view;
 }

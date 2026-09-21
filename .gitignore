@@ -1,0 +1,17 @@
+# Sistema
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editores
+.vscode/
+.idea/
+*.swp
+
+# Dependências e artefatos locais (o Norte não usa build)
+node_modules/
+*.log
+
+# Backups pessoais exportados pelo app — não versione seus dados
+norte-backup-*.json
+apenas-faca-backup-*.json

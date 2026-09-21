@@ -1,5 +1,5 @@
 /**
- * Organizar a caixa de entrada, um item por vez.
+ * Organizar as anotações, uma por vez.
  * "O que isso é?" → (tarefa) "Tem prazo?" → "De que área?" → pronto.
  * "Não sei" é uma resposta válida em todas as etapas.
  */
@@ -72,8 +72,8 @@ export function openOrganizer(startId) {
               sheet.close();
               openGoalForm({ title, fromInboxId: itemId, onDone: () => { if (openInboxItems().length) openOrganizer(); } });
             }),
-            option('Só queria anotar', 'Fica guardado, sem cobrança.', 'note', () => run('note', () => keepAsNote(item.id, draft.title))),
-            option('Não preciso mais', 'Sai da sua cabeça e da lista.', 'x', () => run('discarded', () => discardItem(item.id)))));
+            option('Só um lembrete', 'Fica guardado, sem prazo nem cobrança.', 'note', () => run('note', () => keepAsNote(item.id, draft.title))),
+            option('Não preciso mais', 'Apaga a anotação.', 'x', () => run('discarded', () => discardItem(item.id)))));
       } else if (step === 'due') {
         const dateInput = h('input', {
           type: 'date', class: 'input', 'aria-label': 'Escolher uma data', min: today(),
@@ -109,14 +109,14 @@ export function openOrganizer(startId) {
   function summary() {
     const parts = [
       tally.task && plural(tally.task, 'virou tarefa', 'viraram tarefas'),
-      tally.note && plural(tally.note, 'virou anotação', 'viraram anotações'),
+      tally.note && plural(tally.note, 'ficou como lembrete', 'ficaram como lembretes'),
       tally.discarded && plural(tally.discarded, 'saiu da lista', 'saíram da lista'),
       tally.skipped && plural(tally.skipped, 'ficou para depois', 'ficaram para depois'),
     ].filter(Boolean);
     const remaining = openInboxItems().length;
     return h('div', { class: 'review review--done' },
       h('div', { class: 'review__done-icon', 'aria-hidden': 'true' }, icon('check', { size: 22 })),
-      h('p', { class: 'review__title' }, remaining ? 'Por agora, é isso.' : 'Caixa de entrada vazia.'),
+      h('p', { class: 'review__title' }, remaining ? 'Por agora, é isso.' : 'Nenhuma anotação esperando decisão.'),
       parts.length > 0 && h('p', { class: 'muted' }, `${parts.join(' · ')}.`),
       h('div', { class: 'row-actions row-actions--center' },
         tally.task > 0 && button('Ver tarefas', { onClick: () => { sheet.close(); go('tarefas'); } }),

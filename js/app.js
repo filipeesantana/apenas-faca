@@ -1,5 +1,5 @@
 /**
- * Apenas, Faça. — ponto de entrada.
+ * Norte — ponto de entrada.
  * Inicializa o banco, monta a estrutura e renderiza a tela da rota atual.
  * Qualquer mudança nos dados re-renderiza a tela atual (preservando foco e digitação).
  */
@@ -17,13 +17,16 @@ import { progressView } from './features/progress.js';
 import { analyticsView } from './features/analytics.js';
 import { areaView } from './features/area.js';
 import { settingsView, applyTheme } from './features/settings.js';
-import { openCapture } from './features/capture.js';
+import { openAddMenu } from './features/add-menu.js';
+import { helpView } from './features/help.js';
 import { openOrganizer } from './features/inbox-organizer.js';
 import { openReview } from './features/review.js';
 
 const VIEWS = {
   inicio: { render: homeView, title: 'Início' },
-  entrada: { render: inboxView, title: 'Caixa de entrada' },
+  anotacoes: { render: inboxView, title: 'Anotações' },
+  entrada: { render: inboxView, title: 'Anotações' },
+  ajuda: { render: helpView, title: 'Ajuda' },
   tarefas: { render: tasksView, title: 'Tarefas' },
   metas: { render: (r) => (r.param ? goalDetailView(r) : goalsView(r)), title: 'Metas' },
   progresso: { render: progressView, title: 'Progresso' },
@@ -52,7 +55,7 @@ function render(route, isNavigation) {
   swap(main, node);
   updateShell(route);
   if (isNavigation) {
-    document.title = `${view.title} · Apenas, Faça.`;
+    document.title = `${view.title} · Norte`;
     main.classList.remove('view-enter');
     void main.offsetWidth;
     main.classList.add('view-enter');
@@ -63,13 +66,16 @@ function render(route, isNavigation) {
 
 /** Parâmetros que disparam ações (ex.: #/entrada?organizar=1) — executados uma vez. */
 function handleIntents(route) {
-  if (route.name === 'entrada' && route.query.organizar) {
-    history.replaceState(null, '', '#/entrada');
+  if ((route.name === 'anotacoes' || route.name === 'entrada') && route.query.organizar) {
+    history.replaceState(null, '', '#/anotacoes');
     openOrganizer();
   }
   if (route.name === 'tarefas' && route.query.revisar) {
     history.replaceState(null, '', '#/tarefas');
     openReview();
+  }
+  if (route.name === 'metas' && route.param && route.query.ver === 'plano') {
+    requestAnimationFrame(() => document.getElementById('plano')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   }
 }
 
@@ -77,7 +83,7 @@ function bindShortcuts() {
   document.addEventListener('keydown', (e) => {
     if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
     if (isEditable(document.activeElement) || document.body.classList.contains('has-sheet')) return;
-    if (e.key === 'n' || e.key === 'N') { e.preventDefault(); openCapture(); }
+    if (e.key === 'n' || e.key === 'N') { e.preventDefault(); openAddMenu(); }
   });
 }
 

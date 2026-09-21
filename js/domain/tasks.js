@@ -18,6 +18,19 @@ export const stuckTasks = (min = 3) =>
   openTasks().filter((t) => (t.postponedCount || 0) >= min).sort((a, b) => b.postponedCount - a.postponedCount);
 export const tasksForGoal = (goalId) => allTasks().filter((t) => t.goalId === goalId);
 
+export const IMPORTANCE = [
+  { value: 'low', label: 'Baixa' },
+  { value: 'normal', label: 'Normal' },
+  { value: 'high', label: 'Alta' },
+];
+export const ESTIMATES = [10, 20, 30, 45, 60, 120];
+
+/** Próximo passo de uma meta: a tarefa marcada, ou a tarefa ligada aberta mais antiga. */
+export function nextStepOf(goalId) {
+  const open = tasksForGoal(goalId).filter(isOpen);
+  return open.find((t) => t.nextStep) || open.sort((a, b) => (a.dueDate || '9999').localeCompare(b.dueDate || '9999') || a.createdAt - b.createdAt)[0] || null;
+}
+
 export const DUE_PRESETS = [
   { id: 'today', label: 'Hoje', date: () => today() },
   { id: 'tomorrow', label: 'Amanhã', date: () => addDays(today(), 1) },
@@ -25,7 +38,7 @@ export const DUE_PRESETS = [
   { id: 'nextweek', label: 'Próxima semana', date: () => nextMonday() },
 ];
 
-export function newTask({ title, notes = '', areaId = null, goalId = null, importance = 'normal', dueDate = null, source = 'direct' }) {
+export function newTask({ title, notes = '', areaId = null, goalId = null, importance = 'normal', dueDate = null, source = 'direct', estimateMin = null, nextStep = false }) {
   const now = Date.now();
   return {
     id: uid(),
@@ -43,13 +56,25 @@ export function newTask({ title, notes = '', areaId = null, goalId = null, impor
     droppedAt: null,
     postponedCount: 0,
     source,
+    estimateMin: estimateMin > 0 ? Math.round(estimateMin) : null,
+    nextStep: !!(nextStep && goalId),
   };
+}
+
+/** Ao marcar uma tarefa como próximo passo, as outras da mesma meta deixam de ser. */
+function clearOtherNextSteps(goalId, exceptId) {
+  const now = Date.now();
+  return tasksForGoal(goalId).filter((x) => x.nextStep && x.id !== exceptId).map((x) => ({ ...x, nextStep: false, updatedAt: now }));
 }
 
 export async function createTask(fields) {
   const t = newTask(fields);
   if (!t.title) return null;
-  await commit({ put: { tasks: [t] }, events: [makeEvent('task.created', t, { dueDate: t.dueDate, source: t.source })] });
+  const others = t.nextStep ? clearOtherNextSteps(t.goalId, t.id) : [];
+  await commit({
+    put: { tasks: [t, ...others] },
+    events: [makeEvent('task.created', t, { dueDate: t.dueDate, source: t.source, goalId: t.goalId, nextStep: t.nextStep })],
+  });
   return t;
 }
 
@@ -65,7 +90,7 @@ export function completeTask(id) {
   if (!t || t.status === 'done') return Promise.resolve(null);
   return patchTask(id, { status: 'done', completedAt: Date.now() }, [[
     'task.completed',
-    { wasOverdue: isOverdue(t), postponedCount: t.postponedCount || 0, dueDate: t.dueDate, importance: t.importance },
+    { wasOverdue: isOverdue(t), postponedCount: t.postponedCount || 0, dueDate: t.dueDate, importance: t.importance, goalId: t.goalId, estimateMin: t.estimateMin },
   ]]);
 }
 
@@ -111,7 +136,12 @@ export function updateTask(id, patch) {
   const fields = Object.keys(patch).filter((k) => JSON.stringify(t[k] ?? null) !== JSON.stringify(patch[k] ?? null));
   if (!fields.length) return Promise.resolve(null);
   const clean = Object.fromEntries(fields.map((k) => [k, patch[k]]));
-  return patchTask(id, clean, [['task.edited', { fields }]]);
+  if ('goalId' in clean && !clean.goalId) clean.nextStep = false;
+  const goalId = clean.goalId ?? t.goalId;
+  if (clean.nextStep && !goalId) clean.nextStep = false;
+  const next = { ...t, ...clean, updatedAt: Date.now() };
+  const others = next.nextStep ? clearOtherNextSteps(goalId, id) : [];
+  return commit({ put: { tasks: [next, ...others] }, events: [makeEvent('task.edited', next, { fields })] });
 }
 
 /** Agrupa tarefas abertas por proximidade do prazo. */

@@ -1,14 +1,21 @@
 /**
- * Metas: por valor (dinheiro), por quantidade e por etapas.
- * O valor atual é um cache; a fonte da verdade do histórico são os eventos `goal.progress`.
+ * Metas: valor (dinheiro), quantidade, tempo e etapas.
+ * Unidades internas: dinheiro em centavos; tempo em minutos; quantidade em número.
+ * O valor atual é um cache; o histórico verdadeiro são os eventos `goal.progress`.
  */
 import { state, commit } from '../core/store.js';
 import { makeEvent } from '../core/events.js';
 import { uid, clamp, sum } from '../utils/helpers.js';
-import { DAY, today, diffDays, formatMonthYear } from '../utils/dates.js';
-import { formatMoney, formatMoneyApprox, formatCount, formatCount1 } from '../utils/numbers.js';
+import { DAY, today, diffDays } from '../utils/dates.js';
+import { formatMoney, formatCount, formatMinutes, parseMoney, parseNumber, parseDuration } from '../utils/numbers.js';
 
-export const GOAL_TYPES = ['money', 'count', 'steps'];
+export const GOAL_TYPES = {
+  money: { label: 'Valor', desc: 'Para dinheiro ou qualquer objetivo numérico.', example: 'Ex.: juntar R$ 40.000', icon: 'coins' },
+  count: { label: 'Quantidade', desc: 'Para aulas, livros, treinos, unidades ou ocorrências.', example: 'Ex.: 40 aulas, 12 livros', icon: 'layers' },
+  time: { label: 'Tempo', desc: 'Para acompanhar horas ou minutos acumulados.', example: 'Ex.: estudar 60 horas', icon: 'clock' },
+  steps: { label: 'Etapas', desc: 'Para objetivos formados por passos.', example: 'Ex.: tirar a habilitação', icon: 'steps' },
+};
+
 export const MILESTONES = [10, 25, 50, 75, 90, 100];
 export const MILESTONE_TEXT = {
   0: 'A meta foi criada.',
@@ -23,6 +30,8 @@ export const MILESTONE_TEXT = {
 export const allGoals = () => [...state.goals.values()];
 export const activeGoals = () => allGoals().filter((g) => g.status === 'active');
 
+/* ---------- Valores e formatação por tipo ---------- */
+
 export function progressOf(g) {
   if (g.type === 'steps') {
     const target = g.steps.length;
@@ -34,7 +43,40 @@ export function progressOf(g) {
   return { current, target, ratio: target > 0 ? clamp(current / target, 0, 1) : 0, remaining: Math.max(target - current, 0) };
 }
 
-/** Mensagem do marco correspondente ao progresso atual. */
+export function formatGoalValue(g, v) {
+  if (g.type === 'money') return formatMoney(v);
+  if (g.type === 'time') return formatMinutes(v);
+  if (g.type === 'count') return `${formatCount(v)}${g.unit ? ` ${g.unit}` : ''}`;
+  return `${v} ${v === 1 ? 'etapa' : 'etapas'}`;
+}
+
+/** Só o número (sem unidade de contagem): usado em "18 / 40 aulas". */
+function bare(g, v) {
+  if (g.type === 'money') return formatMoney(v);
+  if (g.type === 'time') return formatMinutes(v);
+  return formatCount(v);
+}
+
+/** "R$ 8.500 / R$ 40.000" · "18 / 40 aulas" · "8h20 / 60h" · "3 / 5 etapas" */
+export function goalValueLine(g) {
+  const { current, target } = progressOf(g);
+  const unit = g.type === 'count' ? (g.unit ? ` ${g.unit}` : '') : g.type === 'steps' ? ' etapas' : '';
+  return `${bare(g, current)} / ${bare(g, target)}${unit}`;
+}
+
+export function remainingText(g) {
+  const { remaining } = progressOf(g);
+  if (remaining <= 0) return 'Nada falta.';
+  if (g.type === 'steps') return remaining === 1 ? 'Falta 1 etapa' : `Faltam ${remaining} etapas`;
+  return `Faltam ${formatGoalValue(g, remaining)}`;
+}
+
+export function parseGoalValue(type, input) {
+  if (type === 'money') return parseMoney(input);
+  if (type === 'time') return parseDuration(input);
+  return parseNumber(input);
+}
+
 export function milestoneMessage(g) {
   const pct = progressOf(g).ratio * 100;
   let m = 0;
@@ -42,32 +84,8 @@ export function milestoneMessage(g) {
   return MILESTONE_TEXT[m];
 }
 
-export function formatGoalValue(g, v) {
-  if (g.type === 'money') return formatMoney(v);
-  if (g.type === 'count') return `${formatCount(v)}${g.unit ? ` ${g.unit}` : ''}`;
-  return `${v} ${v === 1 ? 'etapa' : 'etapas'}`;
-}
+/* ---------- Gravação com marcos e mudança de status ---------- */
 
-/** "R$ 8.500 de R$ 40.000" · "18 de 40 aulas" · "3 de 5 etapas" */
-export function goalValueLine(g) {
-  const { current, target } = progressOf(g);
-  if (g.type === 'money') return `${formatMoney(current)} de ${formatMoney(target)}`;
-  if (g.type === 'count') return `${formatCount(current)} de ${formatCount(target)}${g.unit ? ` ${g.unit}` : ''}`;
-  return `${current} de ${target} ${target === 1 ? 'etapa' : 'etapas'}`;
-}
-
-export function remainingText(g) {
-  const { remaining } = progressOf(g);
-  if (remaining <= 0) return 'Nada falta.';
-  if (g.type === 'money') return `Faltam ${formatMoney(remaining)}`;
-  if (g.type === 'count') return `Faltam ${formatCount(remaining)}${g.unit ? ` ${g.unit}` : ''}`;
-  return remaining === 1 ? 'Falta 1 etapa' : `Faltam ${remaining} etapas`;
-}
-
-/**
- * Aplica marcos e transições de status, e grava tudo num único commit.
- * `silent` marca marcos sem gerar eventos (usado na criação com valor inicial).
- */
 async function finalize(prev, next, events, { silent = false, extra = {} } = {}) {
   const allEvents = [...events];
   const before = prev ? progressOf(prev).ratio * 100 : 0;
@@ -75,10 +93,7 @@ async function finalize(prev, next, events, { silent = false, extra = {} } = {})
   const reached = new Set(next.milestonesReached || []);
   const crossed = [];
   for (const m of MILESTONES) {
-    if (after >= m - 1e-9 && (before < m - 1e-9 || !prev) && !reached.has(m)) {
-      reached.add(m);
-      crossed.push(m);
-    }
+    if (after >= m - 1e-9 && (!prev || before < m - 1e-9) && !reached.has(m)) { reached.add(m); crossed.push(m); }
   }
   next.milestonesReached = [...reached].sort((a, b) => a - b);
   if (!silent) for (const m of crossed) allEvents.push(makeEvent('goal.milestone', next, { pct: m }));
@@ -86,17 +101,13 @@ async function finalize(prev, next, events, { silent = false, extra = {} } = {})
   let completed = false;
   const hasTarget = next.type === 'steps' ? next.steps.length > 0 : next.targetValue > 0;
   if (hasTarget && after >= 100 - 1e-9 && next.status === 'active') {
-    next.status = 'done';
-    next.completedAt = Date.now();
-    completed = true;
+    next.status = 'done'; next.completedAt = Date.now(); completed = true;
     allEvents.push(makeEvent('goal.completed', next));
   } else if (after < 100 - 1e-9 && next.status === 'done') {
-    next.status = 'active';
-    next.completedAt = null;
+    next.status = 'active'; next.completedAt = null;
     allEvents.push(makeEvent('goal.reopened', next, { auto: true }));
   }
   next.updatedAt = Date.now();
-
   const undo = await commit({
     put: { ...(extra.put || {}), goals: [next] },
     del: extra.del || {},
@@ -128,8 +139,8 @@ export function createGoal({ title, type, targetValue = null, currentValue = 0, 
   return finalize(null, g, events, { silent: true, extra: typeof extra === 'function' ? extra(g) : extra });
 }
 
-/** kind: 'add' (aporte/avanço), 'withdraw' (retirada), 'correction' (ajuste do valor). */
-export function addProgress(id, delta, { kind = 'add', note = '' } = {}) {
+/** kind: 'add' (avanço/aporte), 'withdraw' (retirada/remoção), 'correction' (ajuste). */
+export function addProgress(id, delta, { kind = 'add', note = '', taskId = null } = {}) {
   const g = state.goals.get(id);
   if (!g || g.type === 'steps' || !Number.isFinite(delta) || delta === 0) return Promise.resolve(null);
   const before = g.currentValue || 0;
@@ -137,7 +148,7 @@ export function addProgress(id, delta, { kind = 'add', note = '' } = {}) {
   const effective = after - before;
   if (effective === 0) return Promise.resolve(null);
   const next = { ...g, currentValue: after };
-  return finalize(g, next, [makeEvent('goal.progress', next, { kind, delta: effective, before, after, note, goalType: g.type })]);
+  return finalize(g, next, [makeEvent('goal.progress', next, { kind, delta: effective, before, after, note, goalType: g.type, taskId })]);
 }
 
 export function setCurrentValue(id, value, note = '') {
@@ -148,8 +159,7 @@ export function setCurrentValue(id, value, note = '') {
 
 export function toggleStep(goalId, stepId) {
   const g = state.goals.get(goalId);
-  if (!g) return Promise.resolve(null);
-  const step = g.steps.find((s) => s.id === stepId);
+  const step = g?.steps.find((s) => s.id === stepId);
   if (!step) return Promise.resolve(null);
   const done = !step.done;
   const next = { ...g, steps: g.steps.map((s) => (s.id === stepId ? { ...s, done, doneAt: done ? Date.now() : null } : s)) };
@@ -184,15 +194,14 @@ export function updateGoal(id, patch) {
 export function archiveGoal(id) {
   const g = state.goals.get(id);
   if (!g) return Promise.resolve(null);
-  const next = { ...g, status: 'archived', archivedFrom: g.status, updatedAt: Date.now() };
+  const next = { ...g, status: 'archived', updatedAt: Date.now() };
   return commit({ put: { goals: [next] }, events: [makeEvent('goal.archived', next)] });
 }
 
 export function restoreGoal(id) {
   const g = state.goals.get(id);
   if (!g) return Promise.resolve(null);
-  const done = progressOf(g).ratio >= 1;
-  const next = { ...g, status: done ? 'done' : 'active', updatedAt: Date.now() };
+  const next = { ...g, status: progressOf(g).ratio >= 1 ? 'done' : 'active', updatedAt: Date.now() };
   return commit({ put: { goals: [next] }, events: [makeEvent('goal.restored', next)] });
 }
 
@@ -200,66 +209,54 @@ export function deleteGoal(id) {
   const g = state.goals.get(id);
   if (!g) return Promise.resolve(null);
   const now = Date.now();
-  const tasks = [...state.tasks.values()].filter((t) => t.goalId === id).map((t) => ({ ...t, goalId: null, updatedAt: now }));
+  const tasks = [...state.tasks.values()].filter((t) => t.goalId === id).map((t) => ({ ...t, goalId: null, nextStep: false, updatedAt: now }));
   return commit({ put: { tasks }, del: { goals: [id] }, events: [makeEvent('goal.deleted', g, { title: g.title })] });
 }
 
-/* ---------- Ritmo e previsão ---------- */
+/* ---------- Ritmo recente ---------- */
 
-const MONTH_DAYS = 30.4375;
+/** Último movimento (progresso, etapa ou tarefa ligada concluída). */
+export function lastMovementAt(g) {
+  let last = 0;
+  for (const e of state.events) {
+    if (e.createdAt <= last) continue;
+    if (e.entityId === g.id && (e.type === 'goal.progress' || e.type === 'goal.step')) last = e.createdAt;
+    else if (e.type === 'task.completed' && e.metadata?.goalId === g.id) last = e.createdAt;
+  }
+  return last || null;
+}
 
 /**
- * Calcula ritmo necessário (se há data) e ritmo recente (se há histórico suficiente).
- * Histórico suficiente = pelo menos 21 dias de meta e 2 movimentos na janela de 90 dias.
- * Correções não entram no ritmo (são ajustes, não avanço).
+ * Média recente por dia: movimentos (sem correções) numa janela de até 90 dias.
+ * Só existe com pelo menos 21 dias de meta e 2 movimentos — antes disso não há base para estimar.
  */
-export function paceOf(g, now = Date.now()) {
-  if (g.type === 'steps' || g.status !== 'active') return null;
-  const { remaining } = progressOf(g);
-  const out = { remaining, neededPerDay: null, avgPerDay: null, insufficient: false, datePassed: false, daysLeft: null, projectionDate: null, projectionDays: null, windowDays: null, offPace: false };
-
+export function recentPace(g, now = Date.now()) {
+  if (g.type === 'steps') {
+    const windowStart = Math.max(g.createdAt, now - 90 * DAY);
+    const span = (now - windowStart) / DAY;
+    const done = g.steps.filter((s) => s.doneAt && s.doneAt >= windowStart).length;
+    if (span < 21 || done < 2) return null;
+    return { perDay: done / span, windowDays: Math.round(span) };
+  }
   const windowStart = Math.max(g.createdAt, now - 90 * DAY);
-  const spanDays = (now - windowStart) / DAY;
+  const span = (now - windowStart) / DAY;
   const moves = state.events.filter((e) => e.entityId === g.id && e.type === 'goal.progress' && e.metadata?.kind !== 'correction' && e.createdAt >= windowStart);
-  if (spanDays >= 21 && moves.length >= 2) {
-    out.avgPerDay = sum(moves, (e) => e.metadata.delta) / spanDays;
-    out.windowDays = Math.round(spanDays);
-  } else out.insufficient = true;
+  if (span < 21 || moves.length < 2) return null;
+  return { perDay: sum(moves, (e) => e.metadata.delta) / span, windowDays: Math.round(span) };
+}
 
+/** Situação da meta frente à data escolhida. */
+export function paceOf(g, now = Date.now()) {
+  if (g.status !== 'active') return null;
+  const { remaining } = progressOf(g);
+  const recent = recentPace(g, now);
+  const out = { remaining, recent, neededPerDay: null, daysLeft: null, datePassed: false, offPace: false, projectionDays: null };
   if (g.targetDate) {
-    const days = diffDays(today(), g.targetDate);
-    out.daysLeft = days;
-    if (days < 0) out.datePassed = true;
-    else if (remaining > 0) out.neededPerDay = remaining / Math.max(days, 1);
+    out.daysLeft = diffDays(today(), g.targetDate);
+    if (out.daysLeft < 0) out.datePassed = true;
+    else if (remaining > 0) out.neededPerDay = remaining / Math.max(out.daysLeft, 1);
   }
-
-  if (out.avgPerDay > 0 && remaining > 0) {
-    out.projectionDays = remaining / out.avgPerDay;
-    out.projectionDate = new Date(now + out.projectionDays * DAY);
-  }
-  out.offPace = out.neededPerDay != null && out.avgPerDay != null && out.avgPerDay < out.neededPerDay * 0.9;
+  if (recent?.perDay > 0 && remaining > 0) out.projectionDays = remaining / recent.perDay;
+  out.offPace = out.neededPerDay != null && recent != null && recent.perDay < out.neededPerDay * 0.9;
   return out;
-}
-
-/** Ritmo em linguagem humana: "R$ 1.200/mês", "3 aulas por semana". */
-export function rateText(g, perDay) {
-  if (perDay == null || !Number.isFinite(perDay)) return '—';
-  if (g.type === 'money') return `${formatMoneyApprox(perDay * MONTH_DAYS)}/mês`;
-  const unit = g.unit ? ` ${g.unit}` : '';
-  const perWeek = perDay * 7;
-  if (perWeek >= 1) return `${formatCount1(perWeek >= 10 ? Math.round(perWeek) : Math.round(perWeek * 10) / 10)}${unit} por semana`;
-  const perMonth = perDay * MONTH_DAYS;
-  if (perMonth >= 0.1) return `${formatCount1(Math.round(perMonth * 10) / 10)}${unit} por mês`;
-  return `menos de 0,1${unit} por mês`;
-}
-
-export function projectionText(pace) {
-  if (!pace?.projectionDate) return null;
-  if (pace.projectionDays > 3650) return 'Nesse ritmo, levaria mais de 10 anos.';
-  const now = new Date();
-  const d = pace.projectionDate;
-  if (d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()) {
-    return 'Mantendo esse ritmo, a meta tende a ser atingida ainda neste mês.';
-  }
-  return `Mantendo esse ritmo, a meta tende a ser atingida por volta de ${formatMonthYear(d)}.`;
 }

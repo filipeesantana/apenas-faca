@@ -1,4 +1,4 @@
-/** Caixa de entrada: capturar sem classificar, decidir depois. */
+/** Anotações rápidas: guardar sem classificar, decidir depois. */
 import { state, commit } from '../core/store.js';
 import { makeEvent } from '../core/events.js';
 import { uid } from '../utils/helpers.js';
