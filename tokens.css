@@ -1,0 +1,84 @@
+/* Apenas, Faça. — tokens de design
+   Papel quente + tinta quase preta + um único acento (vermilhão) usado com parcimônia. */
+
+:root {
+  color-scheme: light;
+  --font-sans: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Newsreader", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+
+  --bg: #F5F3EE;
+  --surface: #FFFFFF;
+  --surface-2: #FAF9F6;
+  --sunken: #ECE9E2;
+  --ink: #1B1A18;
+  --ink-2: #47443F;
+  --ink-3: #69655D;
+  --line: #E4E0D7;
+  --line-strong: #CFCABE;
+
+  --accent: #C4410F;
+  --accent-hover: #A93608;
+  --accent-ink: #FFFFFF;
+  --accent-soft: #FAE8DE;
+  --accent-text: #A93608;
+
+  --ok: #2B7A4B;      --ok-soft: #E3F1E8;
+  --warn: #935700;    --warn-soft: #FAEFD9;
+  --danger: #B42318;  --danger-soft: #FBE6E4;
+  --focus: #1F5FD6;
+
+  --c-blue: #2F62C9; --c-violet: #6A4FC8; --c-green: #2B8052; --c-rose: #C73E58;
+  --c-amber: #A87205; --c-teal: #13807F; --c-slate: #5B6472; --c-orange: #C8561B;
+
+  --shadow-1: 0 1px 2px rgb(27 26 24 / .05);
+  --shadow-2: 0 1px 2px rgb(27 26 24 / .04), 0 8px 24px -10px rgb(27 26 24 / .14);
+  --shadow-3: 0 24px 64px -16px rgb(27 26 24 / .30);
+
+  --r-sm: 6px;
+  --r: 10px;
+  --r-lg: 14px;
+  --ease: cubic-bezier(.2, .7, .2, 1);
+  --t-fast: 140ms;
+  --t: 220ms;
+
+  --sidebar-w: 248px;
+  --content-w: 760px;
+  --content-wide: 1040px;
+  --tabbar-h: 64px;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #131210; --surface: #1B1A17; --surface-2: #211F1C; --sunken: #0E0D0C;
+  --ink: #EEEBE4; --ink-2: #C2BDB3; --ink-3: #9A948A; --line: #2C2A26; --line-strong: #3B3833;
+  --accent: #EE7A45; --accent-hover: #F58E5E; --accent-ink: #1B0E07; --accent-soft: #36211A; --accent-text: #F2915F;
+  --ok: #5DBE86; --ok-soft: #17291E; --warn: #E0A43C; --warn-soft: #2E2414; --danger: #F07367; --danger-soft: #33191A; --focus: #7BA7FF;
+  --c-blue: #7FA3F0; --c-violet: #A590F0; --c-green: #6CC393; --c-rose: #EE8397; --c-amber: #E3B04A; --c-teal: #4FC4C2; --c-slate: #9AA3B2; --c-orange: #EE9154;
+  --shadow-1: 0 1px 2px rgb(0 0 0 / .4);
+  --shadow-2: 0 1px 2px rgb(0 0 0 / .3), 0 10px 28px -10px rgb(0 0 0 / .55);
+  --shadow-3: 0 24px 64px -12px rgb(0 0 0 / .7);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #131210; --surface: #1B1A17; --surface-2: #211F1C; --sunken: #0E0D0C;
+    --ink: #EEEBE4; --ink-2: #C2BDB3; --ink-3: #9A948A; --line: #2C2A26; --line-strong: #3B3833;
+    --accent: #EE7A45; --accent-hover: #F58E5E; --accent-ink: #1B0E07; --accent-soft: #36211A; --accent-text: #F2915F;
+    --ok: #5DBE86; --ok-soft: #17291E; --warn: #E0A43C; --warn-soft: #2E2414; --danger: #F07367; --danger-soft: #33191A; --focus: #7BA7FF;
+    --c-blue: #7FA3F0; --c-violet: #A590F0; --c-green: #6CC393; --c-rose: #EE8397; --c-amber: #E3B04A; --c-teal: #4FC4C2; --c-slate: #9AA3B2; --c-orange: #EE9154;
+    --shadow-1: 0 1px 2px rgb(0 0 0 / .4);
+    --shadow-2: 0 1px 2px rgb(0 0 0 / .3), 0 10px 28px -10px rgb(0 0 0 / .55);
+    --shadow-3: 0 24px 64px -12px rgb(0 0 0 / .7);
+  }
+}
+
+/* Cores das áreas: qualquer elemento com data-color recebe --area */
+[data-color="blue"] { --area: var(--c-blue); }
+[data-color="violet"] { --area: var(--c-violet); }
+[data-color="green"] { --area: var(--c-green); }
+[data-color="rose"] { --area: var(--c-rose); }
+[data-color="amber"] { --area: var(--c-amber); }
+[data-color="teal"] { --area: var(--c-teal); }
+[data-color="slate"] { --area: var(--c-slate); }
+[data-color="orange"] { --area: var(--c-orange); }

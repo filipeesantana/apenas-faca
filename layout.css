@@ -1,0 +1,116 @@
+/* Estrutura: barra lateral fixa no desktop; barra superior + abas inferiores no celular. */
+
+.app { min-height: 100vh; min-height: 100dvh; }
+
+.sidebar {
+  position: fixed; inset: 0 auto 0 0; width: var(--sidebar-w);
+  display: flex; flex-direction: column; gap: 18px;
+  padding: 22px 16px 18px;
+  border-right: 1px solid var(--line);
+  background: var(--bg);
+  z-index: 20;
+}
+.brand { display: inline-flex; align-items: center; padding: 4px 8px; border-radius: var(--r-sm); }
+.wordmark {
+  font-family: var(--font-display);
+  font-size: 23px;
+  letter-spacing: -0.015em;
+  line-height: 1;
+  white-space: nowrap;
+}
+.wordmark__comma { color: var(--ink-3); }
+.wordmark__dot { color: var(--accent); }
+.brand--sm .wordmark { font-size: 20px; }
+
+.capture-btn { justify-content: flex-start; }
+.capture-btn .kbd { margin-left: auto; }
+.kbd {
+  font-size: 11px; font-weight: 600; line-height: 1;
+  padding: 3px 6px; border-radius: 4px;
+  background: rgb(255 255 255 / .18); color: inherit; opacity: .85;
+}
+
+.side-nav ul { display: grid; gap: 2px; }
+.side-link {
+  display: flex; align-items: center; gap: 12px;
+  padding: 9px 10px; border-radius: var(--r);
+  color: var(--ink-2); font-weight: 500;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.side-link:hover { background: var(--sunken); color: var(--ink); }
+.side-link[aria-current="page"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-1), inset 0 0 0 1px var(--line); }
+.side-link[aria-current="page"] .icon { color: var(--accent); }
+.side-link__label { flex: 1; }
+.sidebar__foot { margin-top: auto; display: grid; gap: 10px; }
+
+.badge {
+  min-width: 20px; height: 20px; padding: 0 6px;
+  display: inline-grid; place-items: center;
+  border-radius: 999px; background: var(--accent); color: var(--accent-ink);
+  font-size: 11.5px; font-weight: 600; line-height: 1;
+}
+.badge[hidden] { display: none; }
+
+.demo-flag {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--warn);
+  padding: 6px 10px; border-radius: var(--r-sm); background: var(--warn-soft);
+}
+.demo-flag[hidden] { display: none; }
+
+.topbar, .tabbar { display: none; }
+
+.main {
+  margin-left: var(--sidebar-w);
+  padding: 40px 48px 96px;
+  min-height: 100vh;
+}
+.main:focus { outline: none; }
+.view { max-width: var(--content-w); margin: 0 auto; }
+.view--wide { max-width: var(--content-wide); }
+.main.view-enter .view { animation: view-in 260ms var(--ease) both; }
+@keyframes view-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* ---------- Tablet ---------- */
+@media (max-width: 1100px) {
+  :root { --sidebar-w: 216px; }
+  .main { padding: 32px 32px 88px; }
+}
+
+/* ---------- Celular e tablet pequeno ---------- */
+@media (max-width: 860px) {
+  .sidebar { display: none; }
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 20;
+    height: 56px; padding: 0 12px 0 10px;
+    padding-top: env(safe-area-inset-top);
+    box-sizing: content-box;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: saturate(1.4) blur(12px);
+    -webkit-backdrop-filter: saturate(1.4) blur(12px);
+    border-bottom: 1px solid var(--line);
+  }
+  .topbar__actions { display: flex; align-items: center; gap: 8px; }
+  .main { margin-left: 0; padding: 20px 16px calc(var(--tabbar-h) + 32px + env(safe-area-inset-bottom)); min-height: auto; }
+
+  .tabbar {
+    display: block; position: fixed; inset: auto 0 0 0; z-index: 30;
+    background: color-mix(in srgb, var(--surface) 94%, transparent);
+    backdrop-filter: saturate(1.4) blur(14px);
+    -webkit-backdrop-filter: saturate(1.4) blur(14px);
+    border-top: 1px solid var(--line);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .tabbar ul { display: grid; grid-template-columns: repeat(5, 1fr); height: var(--tabbar-h); }
+  .tab-link {
+    position: relative; width: 100%; height: 100%;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    color: var(--ink-3); font-size: 11px; font-weight: 500;
+    transition: color var(--t-fast) var(--ease);
+  }
+  .tab-link.is-active { color: var(--ink); }
+  .tab-link.is-active .icon { color: var(--accent); }
+  .tab-link .badge { position: absolute; top: 7px; left: calc(50% + 6px); min-width: 17px; height: 17px; font-size: 10.5px; padding: 0 4px; }
+  .tab-link:focus-visible { outline-offset: -4px; }
+}
