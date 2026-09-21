@@ -41,9 +41,17 @@
   --r-sm: 6px;
   --r: 9px;
   --r-lg: 12px;
-  --ease: cubic-bezier(.2, .7, .2, 1);
-  --t-fast: 140ms;
-  --t: 220ms;
+  /* Movimento: poucas durações, sempre as mesmas curvas */
+  --motion-fast: 120ms;   /* hover, pressionar, seleção */
+  --motion: 180ms;        /* dicas, menus, expansão */
+  --motion-slow: 240ms;   /* painéis e diálogos */
+  --ease: cubic-bezier(.2, .8, .2, 1);        /* entradas */
+  --ease-in-out: cubic-bezier(.4, 0, .2, 1);  /* mudanças de estado */
+  --t-fast: var(--motion-fast);
+  --t: var(--motion);
+
+  /* Espaçamento */
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 20px; --s6: 24px; --s8: 32px;
 
   --sidebar-w: 252px;
   --content-w: 780px;

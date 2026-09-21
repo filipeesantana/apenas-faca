@@ -6,6 +6,7 @@
 import { load, subscribe, state } from './core/store.js';
 import { parseHash, onRoute, go } from './core/router.js';
 import { swap, h } from './ui/dom.js';
+import { hidePopover, syncPopover } from './ui/popover.js';
 import { isEditable } from './utils/helpers.js';
 import { ensureInitialized } from './domain/areas.js';
 import { buildShell, updateShell } from './features/shell.js';
@@ -37,8 +38,20 @@ const VIEWS = {
 
 const main = document.getElementById('main');
 let current = parseHash();
+let lastScreen = null;
+
+/**
+ * Várias mudanças de dados no mesmo instante (ex.: concluir + registrar evento)
+ * viram UMA renderização no próximo quadro.
+ */
+let pending = 0;
+function scheduleRender() {
+  if (pending) return;
+  pending = requestAnimationFrame(() => { pending = 0; render(current, false); });
+}
 
 function render(route, isNavigation) {
+  if (pending) { cancelAnimationFrame(pending); pending = 0; }
   const view = VIEWS[route.name];
   if (!view) { go('inicio'); return; }
   current = route;
@@ -52,14 +65,22 @@ function render(route, isNavigation) {
       h('p', { class: 'empty__text' }, 'Seus dados estão salvos. Tente voltar ao início ou recarregar a página.'),
       h('a', { class: 'btn btn--secondary', href: '#/inicio' }, 'Voltar ao início')));
   }
+  // Mudar só filtros/período (mesma tela) atualiza no lugar: sem voltar ao topo e sem animação de entrada.
+  const screen = `${route.name}/${route.param || ''}`;
+  const sameScreen = screen === lastScreen;
+  lastScreen = screen;
+  if (isNavigation) hidePopover(true);
   swap(main, node);
   updateShell(route);
+  syncPopover();
   if (isNavigation) {
     document.title = `${view.title} · Norte`;
-    main.classList.remove('view-enter');
-    void main.offsetWidth;
-    main.classList.add('view-enter');
-    window.scrollTo({ top: 0 });
+    if (!sameScreen) {
+      main.classList.remove('view-enter');
+      void main.offsetWidth;
+      main.classList.add('view-enter');
+      window.scrollTo({ top: 0 });
+    }
     handleIntents(route);
   }
 }
@@ -91,7 +112,7 @@ function renderFatal(err) {
   console.error(err);
   document.getElementById('app').replaceChildren(h('div', { class: 'fatal' },
     h('h1', null, 'Não foi possível abrir seus dados.'),
-    h('p', null, err?.message || 'O armazenamento local do navegador não respondeu.'),
+    h('p', null, 'O armazenamento local do navegador não respondeu.'),
     h('p', { class: 'muted' }, 'Isso costuma acontecer em janelas anônimas de alguns navegadores ou quando o armazenamento está bloqueado. Tente uma janela normal, feche outras abas do aplicativo e recarregue.'),
     h('button', { class: 'btn btn--primary', onClick: () => location.reload() }, 'Recarregar')));
 }
@@ -107,8 +128,8 @@ async function boot() {
   applyTheme(state.settings.theme);
   buildShell();
   onRoute((route) => render(route, true));
-  subscribe(() => render(current, false));
-  window.addEventListener('app:rerender', () => render(current, false));
+  subscribe(scheduleRender);
+  window.addEventListener('app:rerender', scheduleRender);
   matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => applyTheme(state.settings.theme));
   bindShortcuts();
   render(parseHash(), true);

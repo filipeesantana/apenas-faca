@@ -120,7 +120,18 @@ export function goalDetailView(route) {
       g.targetDate && h('span', { class: 'meta-muted' }, `até ${formatDayLong(g.targetDate)}`),
       g.status === 'done' && h('span', { class: 'pill pill--ok' }, icon('check', { size: 12 }), 'concluída'),
       g.status === 'archived' && h('span', { class: 'pill' }, 'arquivada')),
-    h('h1', { class: 'page-title' }, g.title)));
+    h('div', { class: 'goal-head__row' },
+      h('h1', { class: 'page-title' }, g.title),
+      active && g.type !== 'steps' && button('Registrar progresso', {
+        variant: 'primary', icon: 'plus',
+        onClick: () => {
+          const box = document.getElementById('registrar');
+          box?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' });
+          box?.classList.remove('is-pulse'); void box?.offsetWidth; box?.classList.add('is-pulse');
+          setTimeout(() => box?.querySelector('input:not([type=hidden])')?.focus({ preventScroll: true }), 250);
+        },
+      }),
+      active && g.type === 'steps' && button('Marcar etapa', { variant: 'primary', icon: 'check', onClick: () => document.querySelector('.steps .step:not(.is-done) .check')?.focus() }))));
 
   const layout = h('div', { class: 'goal-layout' });
   const main = h('div', { class: 'goal-layout__main' });
@@ -129,7 +140,7 @@ export function goalDetailView(route) {
   add(view, layout);
 
   add(main, summaryCard(g, p));
-  if (active && g.type !== 'steps') add(main, h('section', { class: 'card section' }, sectionHead('Registrar progresso'), progressEntry(g, { compact: true })));
+  if (active && g.type !== 'steps') add(main, h('section', { class: 'card section', id: 'registrar' }, sectionHead('Registrar progresso'), progressEntry(g, { compact: true })));
   if (active) add(main, nextStepSection(g));
   if (g.type === 'steps') add(main, stepsSection(g));
   if (g.type !== 'steps') {
@@ -142,12 +153,18 @@ export function goalDetailView(route) {
   return view;
 }
 
+/** Últimos valores exibidos por meta: destacam brevemente o que mudou após um registro. */
+const shown = new Map();
+
 function summaryCard(g, p) {
   const stats = g.type === 'steps'
     ? [['Etapas', `${p.target}`], ['Concluídas', `${p.current}`], ['Faltam', `${p.remaining}`], ['Progresso', formatPercent(p.ratio)]]
     : [['Objetivo', formatGoalValue(g, p.target)], [g.type === 'money' ? 'Já tenho' : 'Feito', formatGoalValue(g, p.current)], ['Faltam', p.remaining > 0 ? formatGoalValue(g, p.remaining) : '—'], ['Progresso', formatPercent(p.ratio)]];
-  return h('section', { class: 'card goal-summary' },
-    h('dl', { class: 'kv' }, stats.map(([k, v], i) => h('div', { class: ['kv__item', i === 3 && 'kv__item--accent'] }, h('dt', null, k), h('dd', null, v)))),
+  const prev = shown.get(g.id);
+  shown.set(g.id, stats.map((x) => x[1]));
+  return h('section', { class: ['card goal-summary', g.status === 'done' && 'is-complete'] },
+    g.status === 'done' && h('p', { class: 'goal-summary__done' }, icon('check', { size: 16 }), `Meta concluída${g.completedAt ? ` em ${formatDay(dayKey(g.completedAt), { withYear: true })}` : ''}.`),
+    h('dl', { class: 'kv' }, stats.map(([k, v], i) => h('div', { class: ['kv__item', i === 3 && 'kv__item--accent', prev && prev[i] !== v && 'is-updated'] }, h('dt', null, k), h('dd', null, v)))),
     progressBar(p.ratio, { key: `goal-${g.id}`, size: 'lg', label: `Progresso de ${g.title}: ${formatPercent(p.ratio)}` }),
     h('p', { class: 'goal-summary__note' }, milestoneMessage(g), p.remaining > 0 && g.type !== 'steps' ? ` ${remainingText(g)}.` : ''));
 }
@@ -285,7 +302,7 @@ function rerender() { window.dispatchEvent(new CustomEvent('app:rerender')); }
 function projectionSection(g) {
   const evs = eventsOf(g.id).filter((e) => e.type === 'goal.progress');
   const initial = eventsOf(g.id).find((e) => e.type === 'goal.created')?.metadata?.initial || 0;
-  const history = [{ t: g.createdAt, v: initial }, ...evs.map((e) => ({ t: e.createdAt, v: e.metadata.after }))];
+  const history = [{ t: g.createdAt, v: initial, start: true }, ...evs.map((e) => ({ t: e.createdAt, v: e.metadata.after, delta: e.metadata.delta, kind: e.metadata.kind }))];
   const pace = paceOf(g);
   const sel = g.status === 'active' && progressOf(g).remaining > 0 ? selectedEnd(g) : null;
   const model = projectionModel(g, { endDate: sel?.endDate, history, recentPerDay: pace?.recent?.perDay || null });
@@ -297,7 +314,11 @@ function projectionSection(g) {
   const label = `Evolução de ${g.title}: ${formatGoalValue(g, model.current)} de ${formatGoalValue(g, model.target)}. ${lines.join(' ')}`;
   return h('section', { class: 'card section' },
     sectionHead(history.length > 1 ? 'Evolução e projeção' : 'Projeção'),
-    projectionChart({ history, model, formatValue: fmt, formatDate: (t) => formatMonthShort(new Date(t)), label }),
+    projectionChart({
+      history, model, formatValue: fmt, formatDate: (t) => formatMonthShort(new Date(t)), label,
+      pointTip: (pt) => `${formatDay(dayKey(pt.t))} · ${pt.start ? `início: ${formatGoalValue(g, pt.v)}` : `${pt.kind === 'correction' ? 'correção' : pt.delta >= 0 ? `+ ${formatGoalValue(g, pt.delta)}` : `− ${formatGoalValue(g, -pt.delta)}`} (total ${formatGoalValue(g, pt.v)})`}`,
+    }),
+    history.length > 1 && h('p', { class: 'chart-hint' }, 'Toque ou passe o cursor nos pontos para ver cada registro.'),
     lines.map((l) => h('p', { class: 'chart-note' }, l)),
     h('p', { class: 'chart-note muted' }, 'Projeções são estimativas, não certezas.'));
 }

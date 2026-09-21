@@ -57,7 +57,7 @@ export const COPY = {
     { id: 'g-any-3', when: 'any', text: 'Cada meta mostra quanto falta e qual ritmo manter.' },
     { id: 'g-any-4', when: 'any', text: 'Uma meta avança quando tem um próximo passo claro.' },
     { id: 'g-stall-1', when: 'stalled', text: 'Algumas metas não se movem há semanas. Defina um próximo passo ou arquive.' },
-    { id: 'g-stall-2', when: 'stalled', text: 'Metas paradas pesam. Decida se ainda fazem sentido.' },
+    { id: 'g-stall-2', when: 'stalled', text: 'Algumas metas estão paradas. Decida se ainda fazem sentido.' },
     { id: 'g-empty-1', when: 'empty', text: 'Metas ajudam a acompanhar algo que você deseja alcançar ao longo do tempo.' },
   ],
   progress: [
@@ -82,7 +82,7 @@ export const COPY = {
   ],
   reviewDone: [
     { id: 'rd-1', when: 'any', text: 'Revisão concluída. Sua lista está mais clara.' },
-    { id: 'rd-2', when: 'any', text: 'Pronto. O que ficou é o que importa.' },
+    { id: 'rd-2', when: 'any', text: 'Pronto. Ficou só o que ainda faz sentido.' },
   ],
   emptyTasks: [
     { id: 'et-1', when: 'any', text: 'Quando algo precisar ser feito, adicione aqui. Basta o nome.' },

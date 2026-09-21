@@ -27,10 +27,12 @@ const GROUPS = [
 
 const SPECIAL = {
   atrasadas: { label: 'Atrasadas', test: (t) => isOverdue(t) },
-  travadas: { label: 'Adiadas 2 vezes ou mais', test: (t) => (t.postponedCount || 0) >= 2 },
+  hoje: { label: 'Para hoje', test: (t) => t.dueDate === today() },
+  semana: { label: 'Esta semana', test: (t) => !!t.dueDate && t.dueDate >= today() && t.dueDate <= endOfWeek() },
   'sem-prazo': { label: 'Sem prazo', test: (t) => !t.dueDate },
   importantes: { label: 'Alta importância', test: (t) => t.importance === 'high' },
-  semana: { label: 'Prazo nesta semana', test: (t) => t.dueDate && t.dueDate <= endOfWeek() },
+  travadas: { label: 'Adiadas 2+ vezes', test: (t) => (t.postponedCount || 0) >= 2 },
+  metas: { label: 'Ligadas a metas', test: (t) => !!t.goalId },
 };
 
 /** Rascunho da criação rápida (sobrevive a re-renderizações). */
@@ -55,18 +57,38 @@ export function tasksView(route) {
         button('Nova tarefa', { variant: 'primary', icon: 'plus', onClick: () => openTaskForm({ areaId }) })]),
     quickAdd(areaId));
 
+  const doneCount = allTasks().filter((t) => t.status === 'done' && t.completedAt >= daysAgoTs(59)).length;
+  const droppedCount = allTasks().filter((t) => t.status === 'dropped' && t.droppedAt >= daysAgoTs(59)).length;
   add(view, h('div', { class: 'toolbar' },
     segmented([
-      { value: 'abertas', label: 'Abertas' },
-      { value: 'concluidas', label: 'Concluídas' },
-      { value: 'canceladas', label: 'Canceladas' },
+      { value: 'abertas', label: 'Abertas', count: open.length },
+      { value: 'concluidas', label: 'Concluídas', count: doneCount },
+      { value: 'canceladas', label: 'Canceladas', count: droppedCount },
     ], tab, (v) => go(buildHash({ ...q, ver: v === 'abertas' ? null : v, f: null })), { label: 'Mostrar' }),
     areaFilter(q, areaId)));
 
-  if (special && tab === 'abertas') {
-    add(view, h('div', { class: 'filter-banner' },
-      h('span', null, 'Mostrando: ', h('strong', null, SPECIAL[special].label)),
-      button('Limpar filtro', { variant: 'ghost', size: 'sm', icon: 'x', onClick: () => go(buildHash({ ...q, f: null })) })));
+  if (tab === 'abertas' && open.length) {
+    const base = areaId ? open.filter((t) => t.areaId === areaId) : open;
+    add(view, h('div', { class: 'filter-chips', role: 'group', 'aria-label': 'Filtros rápidos' },
+      Object.entries(SPECIAL).map(([id, f]) => {
+        const n = base.filter(f.test).length;
+        if (!n && special !== id) return null;
+        return h('button', {
+          type: 'button', class: 'chip chip--sm', 'aria-pressed': String(special === id),
+          onClick: () => go(buildHash({ ...q, f: special === id ? null : id })),
+        }, f.label, h('span', { class: 'chip__count' }, n));
+      })));
+  }
+
+  if (tab === 'abertas' && (special || areaId)) {
+    let n = open;
+    if (areaId) n = n.filter((t) => t.areaId === areaId);
+    if (special) n = n.filter(SPECIAL[special].test);
+    add(view, h('div', { class: 'active-filters', role: 'status' },
+      h('strong', null, n.length === 1 ? '1 resultado' : `${n.length} resultados`),
+      special && h('button', { type: 'button', class: 'filter-tag', 'aria-label': `Remover filtro ${SPECIAL[special].label}`, onClick: () => go(buildHash({ ...q, f: null })) }, SPECIAL[special].label, icon('x', { size: 13 })),
+      areaId && h('button', { type: 'button', class: 'filter-tag', 'aria-label': `Remover filtro ${getArea(areaId).name}`, onClick: () => go(buildHash({ ...q, area: null })) }, getArea(areaId).name, icon('x', { size: 13 })),
+      special && areaId && h('button', { type: 'button', class: 'link-btn', onClick: () => go('tarefas') }, 'Limpar filtros')));
   }
 
   if (tab === 'abertas') add(view, openList(open, { areaId, special }));

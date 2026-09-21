@@ -5,7 +5,8 @@
 import { h, add } from '../ui/dom.js';
 import { icon } from '../ui/icons.js';
 import { openSheet } from '../ui/sheet.js';
-import { chipGroup, button, field } from '../ui/components.js';
+import { chipGroup, button, field, runWithButton } from '../ui/components.js';
+import { today } from '../utils/dates.js';
 import { labelWithHelp, HELP } from '../ui/help.js';
 import { createTask } from '../domain/tasks.js';
 import { listAreas } from '../domain/areas.js';
@@ -19,7 +20,8 @@ export function openTaskForm(prefill = {}) {
     importance: 'normal', goalId: prefill.goalId || null, nextStep: !!prefill.nextStep, estimateMin: null, notes: '',
   };
   let details = !!(prefill.goalId || prefill.showDetails);
-  let error = '';
+  const errors = {};
+  let saving = false;
 
   const sheet = openSheet({
     title: prefill.goalId ? 'Próximo passo' : 'Nova tarefa',
@@ -32,9 +34,12 @@ export function openTaskForm(prefill = {}) {
           h('input', {
             id: 'tf-title', class: 'input input--lg', 'data-key': 'tf-title', value: d.title, maxlength: 300, autocomplete: 'off',
             placeholder: prefill.goalId ? 'Ex.: Separar R$ 600 neste mês' : 'Ex.: Pagar internet',
-            onInput: (e) => { d.title = e.target.value; },
-          })),
-        dueField(d.dueDate, (v) => { d.dueDate = v; }, { label: 'Tem prazo?' }));
+            'aria-invalid': errors.title ? 'true' : null, 'aria-describedby': errors.title ? 'tf-title-err' : null,
+            onInput: (e) => { d.title = e.target.value; if (errors.title && d.title.trim()) { delete errors.title; e.target.removeAttribute('aria-invalid'); document.getElementById('tf-title-err')?.remove(); } },
+          }),
+          errors.title && h('p', { class: 'field-error', id: 'tf-title-err' }, errors.title)),
+        h('div', null, dueField(d.dueDate, (v) => { d.dueDate = v; delete errors.due; }, { label: 'Tem prazo?' }),
+          errors.due && h('p', { class: 'field-error' }, errors.due)));
 
       if (!details) {
         add(form, h('button', {
@@ -50,22 +55,32 @@ export function openTaskForm(prefill = {}) {
           estimateField(d.estimateMin, (v) => { d.estimateMin = v; }),
           field('Descrição (opcional)', h('textarea', { class: 'input', rows: 3, 'data-key': 'tf-notes', value: d.notes, placeholder: 'Detalhes, links, observações…', onInput: (e) => { d.notes = e.target.value; } }))));
       }
-      if (error) add(form, h('p', { class: 'form-error', role: 'alert' }, error));
       add(form, h('div', { class: 'form-actions' },
         button('Cancelar', { variant: 'ghost', onClick: () => sheet.close() }),
-        button('Adicionar tarefa', { variant: 'primary', type: 'submit', icon: 'check' })));
+        button('Adicionar tarefa', { variant: 'primary', type: 'submit', icon: 'check', attrs: { 'data-role': 'save' } })));
       return form;
     },
   });
 
   async function save() {
-    if (!d.title.trim()) { error = 'Escreva o nome da tarefa. Ex.: “Pagar internet”.'; sheet.refresh(); return; }
+    if (saving) return;
+    for (const k of Object.keys(errors)) delete errors[k];
+    if (!d.title.trim()) errors.title = 'Escreva o que precisa ser feito. Ex.: “Pagar internet”.';
+    if (d.dueDate && d.dueDate < today()) errors.due = 'Escolha hoje ou uma data futura.';
+    if (Object.keys(errors).length) {
+      sheet.refresh();
+      requestAnimationFrame(() => sheet.panel.querySelector('[aria-invalid="true"], .field-error')?.scrollIntoView({ block: 'center' }));
+      sheet.panel.querySelector('#tf-title')?.focus();
+      return;
+    }
+    saving = true;
+    const btn = sheet.panel.querySelector('[data-role="save"]');
     try {
-      const t = await createTask({ ...d, source: prefill.source || 'direct' });
+      const t = await runWithButton(btn, () => createTask({ ...d, source: prefill.source || 'direct' }), { busy: 'Adicionando…' });
       sheet.close();
       toast(t.nextStep ? 'Próximo passo definido.' : 'Tarefa adicionada.', { action: { label: 'Ver', fn: () => openTaskSheet(t.id) } });
       prefill.onDone?.(t);
-    } catch (err) { toastError(err); }
+    } catch (err) { saving = false; toastError(err, { retry: save }); }
   }
   return sheet;
 }

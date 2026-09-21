@@ -6,6 +6,7 @@
 import { h, swap } from './dom.js';
 import { icon } from './icons.js';
 import { subscribe } from '../core/store.js';
+import { hidePopover, syncPopover } from './popover.js';
 
 const openStack = [];
 document.addEventListener('keydown', (e) => {
@@ -14,7 +15,12 @@ document.addEventListener('keydown', (e) => {
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-export function openSheet({ title = '', render, onClose, variant = 'side', focus = null, className }) {
+export function openSheet({ title = '', render, onClose, variant = 'side', focus = null, className, key }) {
+  // Cliques repetidos não abrem o mesmo painel duas vezes.
+  const sheetKey = key || `${variant}:${title}`;
+  const existing = openStack.find((s) => s.key === sheetKey);
+  if (existing) { existing.panel.focus({ preventScroll: true }); return existing; }
+  hidePopover(true);
   const prevFocus = document.activeElement;
   const titleId = `sheet-${Math.random().toString(36).slice(2, 8)}`;
   const titleEl = h('h2', { class: 'sheet__title', id: titleId }, title);
@@ -30,7 +36,7 @@ export function openSheet({ title = '', render, onClose, variant = 'side', focus
     h('div', { class: 'sheet-backdrop', onClick: () => api.close() }), panel);
 
   const api = {
-    body, panel, isOpen: true,
+    key: sheetKey, body, panel, isOpen: true,
     setTitle(t) { titleEl.textContent = t; },
     refresh() {
       if (!api.isOpen) return;
@@ -39,6 +45,7 @@ export function openSheet({ title = '', render, onClose, variant = 'side', focus
       if (!node) return;
       const hadFocus = panel.contains(document.activeElement);
       swap(body, node);
+      syncPopover();
       // Se o elemento focado sumiu na re-renderização, mantém o foco dentro do painel.
       if (hadFocus && !panel.contains(document.activeElement)) panel.focus({ preventScroll: true });
     },
@@ -49,10 +56,11 @@ export function openSheet({ title = '', render, onClose, variant = 'side', focus
       openStack.splice(openStack.indexOf(api), 1);
       root.classList.remove('is-open');
       root.classList.add('is-closing');
+      hidePopover(true);
       setTimeout(() => {
         root.remove();
         if (!document.querySelector('.sheet-root')) document.body.classList.remove('has-sheet');
-      }, 200);
+      }, 220);
       if (prevFocus && document.contains(prevFocus)) prevFocus.focus({ preventScroll: true });
       onClose?.(result);
     },

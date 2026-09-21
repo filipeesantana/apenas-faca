@@ -35,6 +35,7 @@ export function openTaskSheet(id) {
   let lastSeen = null;
   const sheet = openSheet({
     title: 'Tarefa',
+    key: `task:${id}`,
     render: (api) => {
       const t = state.tasks.get(id);
       if (!t) return null;

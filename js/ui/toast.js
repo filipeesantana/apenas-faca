@@ -1,17 +1,20 @@
 /** Feedback curto após ações, com "Desfazer" quando possível. */
 import { h } from './dom.js';
 
-export function toast(message, { action, duration = 5500, tone } = {}) {
+/** Duração padrão: 4,5 s; com ação (ex.: Desfazer), 6,5 s. Passar o mouse ou focar pausa. */
+export function toast(message, { action, actions, duration, tone } = {}) {
+  const list = (actions || (action ? [action] : [])).filter(Boolean);
+  duration = duration || (list.length ? 6500 : 4500);
   const host = document.getElementById('toasts');
   if (!host) return () => {};
   let timer;
-  const el = h('div', { class: ['toast', tone && `toast--${tone}`] },
+  const el = h('div', { class: ['toast', tone && `toast--${tone}`], role: tone === 'danger' ? 'alert' : null },
     h('span', { class: 'toast__msg' }, message),
-    action && h('button', {
+    list.length > 0 && h('span', { class: 'toast__actions' }, list.map((a) => h('button', {
       type: 'button',
       class: 'toast__action',
-      onClick: async () => { dismiss(); try { await action.fn(); } catch (err) { console.error(err); } },
-    }, action.label),
+      onClick: async () => { dismiss(); try { await a.fn(); } catch (err) { console.error(err); } },
+    }, a.label))),
   );
   function dismiss() {
     clearTimeout(timer);
@@ -29,7 +32,12 @@ export function toast(message, { action, duration = 5500, tone } = {}) {
   return dismiss;
 }
 
-export function toastError(err) {
+/**
+ * Erro para o usuário: mensagem simples, detalhe técnico só no console.
+ * Mensagens de validação (err.userMessage) aparecem como estão.
+ */
+export function toastError(err, { retry, message } = {}) {
   console.error(err);
-  toast(err?.message ? `Não foi possível concluir: ${err.message}` : 'Algo deu errado. Tente de novo.', { tone: 'danger', duration: 7000 });
+  const text = message || err?.userMessage || 'Não foi possível salvar a alteração.';
+  toast(text, { tone: 'danger', duration: 8000, action: retry ? { label: 'Tentar novamente', fn: retry } : undefined });
 }

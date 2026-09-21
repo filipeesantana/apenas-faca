@@ -36,7 +36,11 @@
 .side-link[aria-current="page"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-1), inset 0 0 0 1px var(--line); }
 .side-link[aria-current="page"] .icon { color: var(--accent); }
 .side-link__label { flex: 1; }
-.sidebar__foot { margin-top: auto; display: grid; gap: 10px; }
+.sidebar__foot { margin-top: auto; display: grid; gap: 8px; }
+.credit { margin: 6px 4px 0; padding-top: 12px; border-top: 1px solid var(--line); font-size: 12.5px; line-height: 1.4; color: var(--ink-3); }
+.credit__pre { display: block; }
+.credit__name { color: var(--ink-2); font-weight: 600; }
+.more .credit { margin-top: 18px; text-align: center; }
 
 .badge {
   min-width: 21px; height: 21px; padding: 0 6px;
@@ -83,7 +87,8 @@
     backdrop-filter: saturate(1.4) blur(14px); -webkit-backdrop-filter: saturate(1.4) blur(14px);
     border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom);
   }
-  .tabbar ul { display: grid; grid-template-columns: repeat(5, 1fr); height: var(--tabbar-h); }
+  .tabbar ul { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); height: var(--tabbar-h); }
+  .tab-link__label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .tab-link, .tab-add {
     position: relative; width: 100%; height: 100%;
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
@@ -97,4 +102,14 @@
   .tab-add { color: var(--ink); }
   .tab-add__circle { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--accent-ink); box-shadow: var(--shadow-2); margin-top: -4px; transition: transform 100ms ease; }
   .tab-add:active .tab-add__circle { transform: scale(.95); }
+}
+
+/* Carregamento inicial: só aparece se demorar (evita flash em inicializações rápidas). */
+.boot { max-width: var(--content-w); margin: 40px auto; opacity: 0; animation: boot-in var(--motion) var(--ease) 250ms forwards; }
+.boot__bar { display: block; height: 3px; width: 120px; border-radius: 3px; background: var(--accent-soft); overflow: hidden; position: relative; }
+.boot__bar::after { content: ""; position: absolute; inset: 0; width: 40%; background: var(--accent); animation: boot-slide 900ms var(--ease-in-out) infinite; }
+@keyframes boot-in { to { opacity: 1; } }
+@keyframes boot-slide { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
+@media (max-width: 350px) {
+  .tab-link, .tab-add { font-size: 11px; }
 }

@@ -36,12 +36,13 @@ function sideLink(item) {
 export function buildShell() {
   document.getElementById('sidebar').replaceChildren(
     h('a', { class: 'brand', href: '#/inicio', 'aria-label': 'Norte — Início' }, brandMark()),
-    h('button', { type: 'button', class: 'btn btn--accent btn--block add-btn', onClick: () => openAddMenu() },
-      icon('plus'), h('span', null, 'Adicionar'), h('kbd', { class: 'kbd', 'aria-hidden': 'true' }, 'N')),
+    h('button', { type: 'button', class: 'btn btn--accent btn--block add-btn', title: 'Adicionar tarefa, meta, anotação ou progresso (atalho: N)', onClick: () => openAddMenu() },
+      icon('plus'), h('span', null, 'Adicionar')),
     h('nav', { class: 'side-nav', 'aria-label': 'Principal' }, h('ul', null, NAV.map((item) => h('li', null, sideLink(item))))),
     h('div', { class: 'sidebar__foot' },
+      h('div', { class: 'demo-flag', 'data-demo': '', hidden: true }, icon('layers', { size: 14 }), 'Dados de exemplo'),
       h('ul', null, FOOT.map((item) => h('li', null, sideLink(item)))),
-      h('div', { class: 'demo-flag', 'data-demo': '', hidden: true }, icon('layers', { size: 14 }), 'Dados de exemplo')));
+      credit()));
 
   document.getElementById('topbar').replaceChildren(
     h('a', { class: 'brand brand--sm', href: '#/inicio', 'aria-label': 'Norte — Início' }, brandMark()),
@@ -62,15 +63,19 @@ export function buildShell() {
       icon('menu', { size: 22 }), h('span', { class: 'tab-link__label' }, 'Mais'), badge()))));
 }
 
+function credit() {
+  return h('p', { class: 'credit' }, h('span', { class: 'credit__pre' }, 'Desenvolvido por'), ' ', h('span', { class: 'credit__name' }, 'Filipe Santana'));
+}
+
 function openMore() {
   const sheet = openSheet({
     title: 'Mais',
-    render: () => h('ul', { class: 'more-list' },
+    render: () => h('div', { class: 'more' }, h('ul', { class: 'more-list' },
       [...NAV.slice(3), ...FOOT].map((item) => h('li', null,
         h('button', { type: 'button', class: 'more-link', onClick: () => { sheet.close(); go(item.id); } },
           icon(item.icon, { size: 20 }), h('span', null, item.label),
           item.id === 'anotacoes' && openInboxItems().length ? h('span', { class: 'badge' }, String(openInboxItems().length)) : null,
-          icon('chevronRight', { size: 16 }))))),
+          icon('chevronRight', { size: 16 }))))), credit()),
   });
 }
 

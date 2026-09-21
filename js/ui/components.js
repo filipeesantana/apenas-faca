@@ -105,7 +105,7 @@ export function segmented(options, value, onChange, { label } = {}) {
     options.map((opt) => h('button', {
       type: 'button', class: 'segmented__btn', 'aria-pressed': String(opt.value === value),
       onClick: () => onChange(opt.value),
-    }, opt.label, opt.count != null && h('span', { class: 'segmented__count' }, opt.count))));
+    }, opt.label, opt.count != null && opt.count > 0 && h('span', { class: 'segmented__count' }, opt.count))));
 }
 
 export function field(labelText, control, { hint, id } = {}) {
@@ -119,4 +119,38 @@ export function field(labelText, control, { hint, id } = {}) {
 
 export function toneLabel(tone) {
   return { attention: 'Atenção', watch: 'Para observar', info: 'Registro', good: 'Bom sinal' }[tone] || '';
+}
+
+/**
+ * Executa uma ação assíncrona a partir de um botão, com estados coerentes:
+ * impede clique duplo; mostra "Salvando…" só se demorar (>200 ms);
+ * opcionalmente mostra "Salvo" por um instante. Falha → estado de erro breve.
+ */
+export async function runWithButton(btn, fn, { busy = 'Salvando…', done = null } = {}) {
+  if (!btn || btn.getAttribute('aria-busy') === 'true') return undefined;
+  const label = btn.querySelector('span');
+  const original = label?.textContent;
+  btn.setAttribute('aria-busy', 'true');
+  btn.disabled = true;
+  const slow = setTimeout(() => { if (label) label.textContent = busy; }, 200);
+  try {
+    const result = await fn();
+    clearTimeout(slow);
+    if (done && btn.isConnected) {
+      if (label) label.textContent = done;
+      btn.classList.add('is-done');
+      await new Promise((r) => setTimeout(r, 900));
+      btn.classList.remove('is-done');
+    }
+    return result;
+  } catch (err) {
+    clearTimeout(slow);
+    btn.classList.add('is-failed');
+    setTimeout(() => btn.classList.remove('is-failed'), 1200);
+    throw err;
+  } finally {
+    if (label && original != null) label.textContent = original;
+    btn.removeAttribute('aria-busy');
+    btn.disabled = false;
+  }
 }

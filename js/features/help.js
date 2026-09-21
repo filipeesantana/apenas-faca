@@ -45,6 +45,10 @@ const TOPICS = [
     'Somente neste navegador, neste aparelho (tecnologia IndexedDB). Não existe conta, servidor nem envio de dados.',
     'Se você limpar os dados do navegador ou trocar de aparelho, os dados não vão junto — por isso existe o backup.',
   ]],
+  ['Existem atalhos de teclado?', [
+    'Sim, no computador — mas nenhum é necessário. Toda ação tem um botão visível.',
+    'N abre “Adicionar”. Esc fecha painéis, menus e dicas. Enter salva formulários curtos.',
+  ]],
   ['Como fazer backup?', [
     'Em Ajustes → “Exportar backup”. O Norte gera um arquivo que você pode guardar onde quiser.',
     'Para restaurar, use Ajustes → “Importar backup” e escolha o arquivo. O Norte confere o arquivo e pede confirmação antes de substituir os dados.',

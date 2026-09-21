@@ -43,8 +43,10 @@ export function openGoalForm({ title = '', goalId = null, fromInboxId = null, on
   const d = editing
     ? { title: editing.title, type: editing.type, target: displayValue(editing.type, editing.targetValue), current: '', unit: editing.unit || '', steps: [], targetDate: editing.targetDate || '', horizon: null, areaId: editing.areaId }
     : { title, type: null, target: '', current: '', unit: '', steps: [''], targetDate: '', horizon: null, areaId: null };
-  let error = '';
+  const errors = {};
   let saving = false;
+  const errOf = (k) => errors[k] && h('p', { class: 'field-error', id: `gf-err-${k}` }, errors[k]);
+  const inv = (k) => (errors[k] ? { 'aria-invalid': 'true', 'aria-describedby': `gf-err-${k}` } : {});
   // Prévia do ritmo necessário (atualizada enquanto a pessoa digita).
   const preview = h('div', { class: 'rate-preview', 'aria-live': 'polite' });
 
@@ -56,31 +58,32 @@ export function openGoalForm({ title = '', goalId = null, fromInboxId = null, on
       add(form, h('div', { class: 'field' },
         labelWithHelp('Qual é sua meta?', HELP.meta, { tag: 'label', forId: 'goal-title' }),
         h('input', {
-          id: 'goal-title', class: 'input input--lg', 'data-key': 'goal-title', value: d.title, maxlength: 200, placeholder: 'Ex.: Comprar um carro', autocomplete: 'off',
-          onInput: (e) => { const had = !!d.title.trim(); d.title = e.target.value; if (had !== !!d.title.trim()) sheet.refresh(); },
-        })));
+          id: 'goal-title', class: 'input input--lg', 'data-key': 'goal-title', value: d.title, maxlength: 200, placeholder: 'Ex.: Comprar um carro', autocomplete: 'off', ...inv('title'),
+          onInput: (e) => { const had = !!d.title.trim(); d.title = e.target.value; if (had !== !!d.title.trim()) { delete errors.title; sheet.refresh(); } },
+        }), errOf('title')));
 
       if (d.title.trim() || editing) {
         add(form, h('fieldset', { class: 'fieldset' },
           h('legend', { class: 'field__label' }, 'Como você quer acompanhar?'),
           h('div', { class: 'type-cards' }, TYPE_ORDER.map((t) => h('button', {
             type: 'button', class: 'type-card', 'aria-pressed': String(d.type === t), disabled: !!editing && d.type !== t,
-            onClick: () => { d.type = t; error = ''; sheet.refresh(); },
+            onClick: () => { d.type = t; delete errors.type; sheet.refresh(); },
           },
           h('span', { class: 'type-card__icon', 'aria-hidden': 'true' }, icon(GOAL_TYPES[t].icon, { size: 20 })),
           h('span', { class: 'type-card__title' }, GOAL_TYPES[t].label),
           h('span', { class: 'type-card__desc' }, GOAL_TYPES[t].desc)))),
+          errOf('type'),
           editing && h('p', { class: 'hint' }, 'O tipo não muda depois de criada. Para outro tipo, crie uma nova meta.')));
       }
 
       const L = LABELS[d.type];
       if (L) {
-        const targetInput = h('input', { class: 'input', inputmode: d.type === 'time' ? 'text' : 'decimal', 'data-key': 'goal-target', value: d.target, placeholder: L.ph, onInput: (e) => { d.target = e.target.value; updatePreview(); } });
-        const currentInput = h('input', { class: 'input', inputmode: d.type === 'time' ? 'text' : 'decimal', 'data-key': 'goal-current', value: d.current, placeholder: L.phCur, onInput: (e) => { d.current = e.target.value; updatePreview(); } });
+        const targetInput = h('input', { class: 'input', inputmode: d.type === 'time' ? 'text' : 'decimal', 'data-key': 'goal-target', value: d.target, placeholder: L.ph, ...inv('target'), onInput: (e) => { d.target = e.target.value; updatePreview(); } });
+        const currentInput = h('input', { class: 'input', inputmode: d.type === 'time' ? 'text' : 'decimal', 'data-key': 'goal-current', value: d.current, placeholder: L.phCur, ...inv('current'), onInput: (e) => { d.current = e.target.value; updatePreview(); } });
         const affix = (el) => (d.type === 'money' ? h('div', { class: 'input-affix' }, h('span', { class: 'input-affix__prefix', 'aria-hidden': 'true' }, 'R$'), el) : el);
         add(form, h('div', { class: 'grid-2' },
-          field(L.target, affix(targetInput), { hint: d.type === 'time' ? 'Em horas. Ex.: 60 ou 60h.' : null }),
-          !editing && field(L.current, affix(currentInput), { hint: 'Opcional. Pode ser zero.' })));
+          h('div', null, field(L.target, affix(targetInput), { hint: d.type === 'time' ? 'Em horas. Ex.: 60 ou 60h.' : null }), errOf('target')),
+          !editing && h('div', null, field(L.current, affix(currentInput), { hint: 'Opcional. Pode ser zero.' }), errOf('current'))));
         if (d.type === 'count') {
           add(form, field('De quê?', h('input', { class: 'input', 'data-key': 'goal-unit', value: d.unit, maxlength: 30, placeholder: 'aulas, livros, treinos, km…', onInput: (e) => { d.unit = e.target.value; } }), { hint: 'Use o plural. Ex.: “aulas”.' }));
         }
@@ -95,6 +98,7 @@ export function openGoalForm({ title = '', goalId = null, fromInboxId = null, on
         }))));
         add(form, h('div', { class: 'field' }, h('span', { class: 'field__label' }, 'Quais são as etapas?'), list,
           button('Adicionar etapa', { variant: 'ghost', icon: 'plus', size: 'sm', onClick: () => { d.steps.push(''); sheet.refresh(); focusKey(`goal-step-${d.steps.length - 1}`); } }),
+          errOf('steps'),
           h('p', { class: 'hint' }, 'Enter adiciona a próxima. Dá para mudar depois.')));
       }
 
@@ -111,6 +115,7 @@ export function openGoalForm({ title = '', goalId = null, fromInboxId = null, on
               sheet.refresh();
             }, { label: 'Prazo da meta' }),
             dateInput),
+          errOf('date'),
           h('p', { class: 'due-readout' }, d.targetDate ? [icon('calendar', { size: 15 }), h('strong', null, formatDayLong(d.targetDate)), ' · ', distanceText(d.targetDate)] : h('span', { class: 'muted' }, 'Sem data também vale. Você pode ver cenários depois.')),
           preview));
         add(form, h('div', { class: 'field' }, labelWithHelp('Área (opcional)', HELP.area),
@@ -118,10 +123,10 @@ export function openGoalForm({ title = '', goalId = null, fromInboxId = null, on
         updatePreview();
       }
 
-      if (error) add(form, h('p', { class: 'form-error', role: 'alert' }, error));
+      if (Object.keys(errors).length) add(form, h('p', { class: 'form-error', role: 'alert' }, 'Confira os campos destacados.'));
       add(form, h('div', { class: 'form-actions' },
         button('Cancelar', { variant: 'ghost', onClick: () => sheet.close() }),
-        button(editing ? 'Salvar' : 'Criar meta', { variant: 'primary', type: 'submit', attrs: { disabled: !d.type || !d.title.trim() || saving } })));
+        button(editing ? 'Salvar' : 'Criar meta', { variant: 'primary', type: 'submit', attrs: { 'data-role': 'save' } })));
       return form;
     },
   });
@@ -148,29 +153,45 @@ export function openGoalForm({ title = '', goalId = null, fromInboxId = null, on
   }
 
   function focusKey(key) { requestAnimationFrame(() => sheet.panel.querySelector(`[data-key="${key}"]`)?.focus()); }
-  const fail = (msg) => { error = msg; sheet.refresh(); };
+  const fail = (key, msg) => {
+    errors[key] = msg;
+    sheet.refresh();
+    requestAnimationFrame(() => {
+      const el = sheet.panel.querySelector('[aria-invalid="true"]') || sheet.panel.querySelector('.field-error');
+      el?.scrollIntoView({ block: 'center' });
+      if (el?.matches('input')) el.focus({ preventScroll: true });
+    });
+  };
 
   async function save() {
-    error = '';
+    if (saving) return;
+    for (const k of Object.keys(errors)) delete errors[k];
     const payload = { title: d.title.trim(), type: d.type, targetDate: d.targetDate || null, areaId: d.areaId };
-    if (!payload.title) return fail('Dê um nome para a meta. Ex.: “Comprar um carro”.');
+    if (!payload.title) return fail('title', 'Dê um nome para a meta. Ex.: “Comprar um carro”.');
+    if (!d.type) return fail('type', 'Escolha como você quer acompanhar esta meta.');
+    if (d.targetDate && d.targetDate <= today() && d.targetDate !== editing?.targetDate) return fail('date', 'Escolha uma data a partir de amanhã, ou “Sem data”.');
     if (d.type !== 'steps') {
       payload.targetValue = parseTarget(d.type, d.target);
       if (!payload.targetValue || payload.targetValue <= 0) {
-        return fail({ money: 'Informe o valor objetivo. Ex.: 40.000', count: 'Informe quantos. Ex.: 40', time: 'Informe as horas. Ex.: 60' }[d.type]);
+        return fail('target', { money: 'Informe um valor maior que zero. Ex.: 40.000', count: 'Informe uma quantidade maior que zero. Ex.: 40', time: 'Informe as horas (maior que zero). Ex.: 60' }[d.type]);
       }
       if (!editing) {
         payload.currentValue = d.current.trim() ? parseGoalValue(d.type, d.current) : 0;
-        if (payload.currentValue == null || payload.currentValue < 0) return fail('O valor atual não ficou claro. Confira o número digitado.');
-        if (payload.currentValue >= payload.targetValue) return fail(`O valor atual já alcança o objetivo (${formatGoalValue(payload, payload.currentValue)}). Confira os números.`);
+        if (payload.currentValue == null || payload.currentValue < 0) return fail('current', 'Não entendi esse valor. Use só números. Ex.: 8.500');
+        if (payload.currentValue >= payload.targetValue) return fail('current', `Esse valor já alcança o objetivo (${formatGoalValue(payload, payload.targetValue)}). Confira os números.`);
+      }
+      if (editing && payload.targetValue <= editing.currentValue && payload.targetValue !== editing.targetValue) {
+        return fail('target', `O objetivo não pode ser menor ou igual ao que já foi feito (${formatGoalValue(editing, editing.currentValue)}).`);
       }
       if (d.type === 'count') payload.unit = d.unit.trim();
     } else if (!editing) {
       payload.steps = d.steps.map((x) => x.trim()).filter(Boolean);
-      if (!payload.steps.length) return fail('Escreva pelo menos uma etapa.');
+      if (!payload.steps.length) return fail('steps', 'Escreva pelo menos uma etapa.');
     }
 
     saving = true;
+    const btn = sheet.panel.querySelector('[data-role="save"]');
+    btn?.setAttribute('aria-busy', 'true');
     try {
       if (editing) {
         const patch = { title: payload.title, targetDate: payload.targetDate, areaId: payload.areaId };
@@ -189,8 +210,8 @@ export function openGoalForm({ title = '', goalId = null, fromInboxId = null, on
       }
     } catch (err) {
       saving = false;
-      toastError(err);
-      sheet.refresh();
+      btn?.removeAttribute('aria-busy');
+      toastError(err, { retry: save });
     }
   }
   return sheet;

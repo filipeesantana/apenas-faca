@@ -9,6 +9,13 @@ import { progressFeedback } from './progress-log.js';
 
 const busy = new Set();
 
+/** Impede que cliques repetidos disparem a mesma ação duas vezes (eventos duplicados). */
+async function guard(key, fn) {
+  if (busy.has(key)) return;
+  busy.add(key);
+  try { await fn(); } catch (err) { toastError(err, { retry: () => guard(key, fn) }); } finally { busy.delete(key); }
+}
+
 function withUndo(message, token) {
   if (token) toast(message, { action: { label: 'Desfazer', fn: () => undo(token) } });
 }
@@ -41,34 +48,31 @@ export async function completeWithFeedback(id, el) {
     const token = await completeTask(id);
     if (!token) return;
     const follow = goalFollowUp(t);
-    if (follow) toast(`Concluída: “${t.title}”. Registrar na meta?`, { action: follow, duration: 8000 });
-    else withUndo(`Concluída: “${t?.title}”.`, token);
-  } catch (err) { toastError(err); } finally { busy.delete(id); }
+    if (follow) toast(`Tarefa concluída. Registrar na meta “${state.goals.get(t.goalId).title}”?`, { actions: [follow, { label: 'Desfazer', fn: () => undo(token) }], duration: 8000 });
+    else withUndo('Tarefa concluída.', token);
+  } catch (err) {
+    el?.classList.remove('is-completing');
+    toastError(err, { retry: () => completeWithFeedback(id) });
+  } finally { busy.delete(id); }
 }
 
-export async function dropWithFeedback(id) {
-  try { withUndo('Tarefa cancelada. Remover o que perdeu sentido também é organizar.', await dropTask(id)); } catch (err) { toastError(err); }
-}
+export const dropWithFeedback = (id) => guard(`drop:${id}`, async () => {
+  withUndo('Tarefa cancelada. Fica registrada no histórico.', await dropTask(id));
+});
 
-export async function startWithFeedback(id) {
-  try { if (await startTask(id)) toast('Marcada como em andamento.'); } catch (err) { toastError(err); }
-}
+/** Começar não gera aviso: a própria linha passa a mostrar "em andamento". */
+export const startWithFeedback = (id) => guard(`start:${id}`, () => startTask(id));
+export const pauseWithFeedback = (id) => guard(`pause:${id}`, () => pauseTask(id));
 
-export async function pauseWithFeedback(id) {
-  try { await pauseTask(id); } catch (err) { toastError(err); }
-}
+export const reopenWithFeedback = (id) => guard(`reopen:${id}`, async () => {
+  withUndo('Tarefa reaberta.', await reopenTask(id));
+});
 
-export async function reopenWithFeedback(id) {
-  try { withUndo('Tarefa reaberta.', await reopenTask(id)); } catch (err) { toastError(err); }
-}
+export const setDueWithFeedback = (id, date) => guard(`due:${id}`, async () => {
+  const token = await setDueDate(id, date);
+  if (token) withUndo(date ? `Prazo: ${formatDue(date)}.` : 'Prazo removido.', token);
+});
 
-export async function setDueWithFeedback(id, date) {
-  try {
-    const token = await setDueDate(id, date);
-    if (token) withUndo(date ? `Novo prazo: ${formatDue(date)}.` : 'Prazo removido.', token);
-  } catch (err) { toastError(err); }
-}
-
-export async function deleteWithFeedback(id) {
-  try { withUndo('Tarefa excluída.', await deleteTask(id)); } catch (err) { toastError(err); }
-}
+export const deleteWithFeedback = (id) => guard(`del:${id}`, async () => {
+  withUndo('Tarefa excluída.', await deleteTask(id));
+});

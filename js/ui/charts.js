@@ -3,30 +3,69 @@
  * Cada gráfico tem descrição textual acessível e valores em tooltip.
  */
 import { h, s } from './dom.js';
+import { showPopover, hidePopover, popoverOpenFor } from './popover.js';
+
+/* Alturas anteriores por gráfico: permitem animar a transição ao trocar período. */
+const lastHeights = new Map();
+function animateBars(key, bars) {
+  const prev = key ? lastHeights.get(key) : null;
+  const next = bars.map((b) => b.dataset.h);
+  if (key) lastHeights.set(key, next);
+  bars.forEach((b, i) => { b.style.height = `${prev && prev[i] != null ? prev[i] : next[i]}%`; });
+  if (prev) requestAnimationFrame(() => requestAnimationFrame(() => bars.forEach((b) => { b.style.height = `${b.dataset.h}%`; })));
+}
+
+/** Coluna clicável: mostra o valor ao tocar, clicar ou focar (não depende de hover). */
+function dataButton(cls, tip, children) {
+  let pointer = 'mouse';
+  const btn = h('button', {
+    type: 'button', class: cls, 'aria-label': tip,
+    onPointerdown: (e) => { pointer = e.pointerType; },
+    // Mouse: clicar mantém aberto. Toque: tocar de novo fecha.
+    onClick: () => { if (pointer !== 'mouse' && popoverOpenFor(btn)) hidePopover(); else showPopover(btn, tip, { side: 'top', className: 'pop--tip' }); },
+    onFocus: () => { if (btn.matches(':focus-visible')) showPopover(btn, tip, { side: 'top', className: 'pop--tip' }); },
+    onBlur: () => { if (popoverOpenFor(btn)) hidePopover(); },
+    onPointerenter: (e) => { if (e.pointerType === 'mouse') showPopover(btn, tip, { side: 'top', className: 'pop--tip' }); },
+    onPointerleave: (e) => { if (e.pointerType === 'mouse' && popoverOpenFor(btn) && document.activeElement !== btn) hidePopover(); },
+  }, children);
+  return btn;
+}
 
 /** Colunas verticais (atividade por dia/semana). */
-export function columnChart(points, { label, valueOf = (p) => p.value, tip = () => '', tick = () => '', max } = {}) {
+export function columnChart(points, { label, valueOf = (p) => p.value, tip = () => '', tick = () => '', max, key } = {}) {
   const top = Math.max(max || 0, ...points.map(valueOf), 1);
-  return h('figure', { class: 'cchart', role: 'img', 'aria-label': label },
-    h('div', { class: 'cchart__plot' },
-      points.map((p) => {
-        const v = valueOf(p);
-        return h('div', { class: ['cchart__col', p.current && 'is-current'], title: tip(p) },
-          h('span', { class: ['cchart__bar', v === 0 && 'is-zero'], style: { height: `${v === 0 ? 0 : Math.max((v / top) * 100, 3)}%` } }));
-      })),
+  const bars = [];
+  const plot = h('div', { class: 'cchart__plot' },
+    points.map((p) => {
+      const v = valueOf(p);
+      const bar = h('span', { class: ['cchart__bar', v === 0 && 'is-zero'], 'data-h': v === 0 ? 0 : Math.max((v / top) * 100, 3) });
+      bars.push(bar);
+      return dataButton(['cchart__col', p.current && 'is-current'].filter(Boolean).join(' '), tip(p), bar);
+    }));
+  animateBars(key, bars);
+  return h('figure', { class: 'cchart' },
+    h('figcaption', { class: 'sr-only' }, label),
+    plot,
     h('div', { class: 'cchart__axis', 'aria-hidden': 'true' }, points.map((p) => h('span', null, tick(p)))));
 }
 
 /** Pares de colunas: entradas × saídas. */
-export function pairedChart(points, { label, a, b, tick = () => '', tip = () => '' }) {
+export function pairedChart(points, { label, a, b, tick = () => '', tip = () => '', key, compact = false }) {
   const top = Math.max(1, ...points.map((p) => Math.max(p[a.key], p[b.key])));
-  return h('figure', { class: 'pchart', role: 'img', 'aria-label': label },
+  const bars = [];
+  const plot = h('div', { class: 'pchart__plot' },
+    points.map((p) => {
+      const ba = h('span', { class: 'pchart__bar pchart__bar--a', 'data-h': (p[a.key] / top) * 100 });
+      const bb = h('span', { class: 'pchart__bar pchart__bar--b', 'data-h': (p[b.key] / top) * 100 });
+      bars.push(ba, bb);
+      return dataButton(['pchart__group', p.current && 'is-current'].filter(Boolean).join(' '), tip(p), [ba, bb]);
+    }));
+  animateBars(key, bars);
+  return h('figure', { class: ['pchart', compact && 'is-compact'] },
+    h('figcaption', { class: 'sr-only' }, label),
     h('div', { class: 'pchart__legend', 'aria-hidden': 'true' },
       h('span', { class: 'legend legend--a' }, a.label), h('span', { class: 'legend legend--b' }, b.label)),
-    h('div', { class: 'pchart__plot' },
-      points.map((p) => h('div', { class: ['pchart__group', p.current && 'is-current'], title: tip(p) },
-        h('span', { class: 'pchart__bar pchart__bar--a', style: { height: `${(p[a.key] / top) * 100}%` } }),
-        h('span', { class: 'pchart__bar pchart__bar--b', style: { height: `${(p[b.key] / top) * 100}%` } })))),
+    plot,
     h('div', { class: 'cchart__axis', 'aria-hidden': 'true' }, points.map((p) => h('span', null, tick(p)))));
 }
 
@@ -74,7 +113,7 @@ export function stepLineChart(points, { target, label, now = Date.now() }) {
  * linha do ritmo recente e linha do objetivo. Textos ficam em HTML para
  * não distorcer quando o gráfico estica.
  */
-export function projectionChart({ history, model, formatValue, formatDate, label }) {
+export function projectionChart({ history, model, formatValue, formatDate, label, pointTip }) {
   const W = 1000; const H = 260; const PAD_T = 18; const PAD_B = 8;
   const { startTs, now, endTs, horizon, current, target, recentPerDay } = model;
   const t0 = startTs;
@@ -110,12 +149,19 @@ export function projectionChart({ history, model, formatValue, formatDate, label
     h('span', { class: 'lg lg--target' }, 'Objetivo'),
   ];
 
-  return h('figure', { class: 'pj', role: 'img', 'aria-label': label },
+  return h('figure', { class: 'pj' },
+    h('figcaption', { class: 'sr-only' }, label),
     h('div', { class: 'pj__legend', 'aria-hidden': 'true' }, legend),
     h('div', { class: 'pj__frame' },
       h('span', { class: 'pj__ylabel', style: { top: `${(y(target) / H) * 100}%` }, 'aria-hidden': 'true' }, formatValue(target)),
       h('span', { class: ['pj__ylabel pj__ylabel--now', (now - t0) / (t1 - t0) < 0.12 && 'is-start', (now - t0) / (t1 - t0) > 0.88 && 'is-end'], style: { top: `${(y(current) / H) * 100}%`, left: pct(now) }, 'aria-hidden': 'true' }, formatValue(current)),
-      s('svg', { viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: 'none', class: 'pj__svg', 'aria-hidden': 'true' }, layers)),
+      s('svg', { viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: 'none', class: 'pj__svg', 'aria-hidden': 'true' }, layers),
+      pointTip && history.slice(-30).map((p) => dataButton('pj__pt', pointTip(p), null)).map((btn, i, arr) => {
+        const p = history.slice(-30)[i];
+        btn.style.left = `${(x(p.t) / W) * 100}%`;
+        btn.style.top = `${(y(p.v) / H) * 100}%`;
+        return btn;
+      })),
     h('div', { class: 'pj__axis', 'aria-hidden': 'true' },
       (now - t0) / (t1 - t0) > 0.14 && h('span', { style: { left: '0%' } }, formatDate(t0)),
       h('span', { class: ['pj__axis-now', (now - t0) / (t1 - t0) < 0.14 && 'is-start'], style: { left: pct(now) } }, 'hoje'),

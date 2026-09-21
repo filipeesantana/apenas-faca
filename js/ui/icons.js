@@ -9,6 +9,8 @@ const PATHS = {
   tasks: 'M10 7h10 M10 12h10 M10 17h10 M4 7l1.2 1.2L7.5 6 M4 12l1.2 1.2 2.3-2.2 M4 17l1.2 1.2 2.3-2.2',
   target: `${CIRCLE} M12 16.5a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9z M12 12.5v-.5`,
   trend: 'M4 17l5.5-5.5 4 4L20 9 M15 9h5v5',
+  trendDown: 'M4 7l5.5 5.5 4-4L20 15 M15 15h5v-5',
+  kebab: 'M12 5.5h.01 M12 12h.01 M12 18.5h.01',
   lens: 'M10.5 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14z M20 20l-4.5-4.5 M7.5 13v-1.5 M10.5 13V9 M13.5 13v-2.5',
   settings: 'M4 7h9 M17 7h3 M4 12h3 M11 12h9 M4 17h11 M19 17h1 M15 5v4 M9 10v4 M17 15v4',
   plus: 'M12 5v14 M5 12h14',
@@ -51,7 +53,7 @@ export function icon(name, { size = 18, label, className } = {}) {
   const d = PATHS[name] || PATHS.circle;
   const attrs = {
     viewBox: '0 0 24 24', width: size, height: size, fill: 'none', stroke: 'currentColor',
-    'stroke-width': name === 'more' ? 3 : 1.75, 'stroke-linecap': 'round', 'stroke-linejoin': 'round',
+    'stroke-width': name === 'more' || name === 'kebab' ? 3 : 1.75, 'stroke-linecap': 'round', 'stroke-linejoin': 'round',
     class: ['icon', className].filter(Boolean).join(' '), focusable: 'false',
   };
   if (label) { attrs.role = 'img'; attrs['aria-label'] = label; } else attrs['aria-hidden'] = 'true';

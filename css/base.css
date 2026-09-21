@@ -13,6 +13,7 @@ body {
 }
 body.has-sheet { overflow: hidden; }
 h1, h2, h3, h4, p { margin: 0; }
+[hidden] { display: none !important; }
 ul, ol { margin: 0; padding: 0; list-style: none; }
 a { color: inherit; text-decoration: none; }
 button, input, select, textarea { font: inherit; color: inherit; }
@@ -31,6 +32,8 @@ kbd { font-family: inherit; }
   outline-offset: 2px;
   border-radius: var(--r-sm);
 }
+[role="button"], button, a[href], summary, label[for], select { cursor: pointer; }
+button:disabled, [aria-disabled="true"] { cursor: not-allowed; }
 
 ::selection { background: var(--accent-soft); color: var(--ink); }
 
@@ -81,6 +84,7 @@ kbd { font-family: inherit; }
 .label__count { font-weight: 500; letter-spacing: .02em; }
 .label--accent { color: var(--accent-text); }
 
+/* Movimento reduzido: sem deslocamentos; mudanças de estado continuam visíveis (cor/opacidade). */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 1ms !important;
