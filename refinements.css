@@ -1,0 +1,49 @@
+[hidden] {
+  display: none !important;
+}
+.demo-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--blue-soft);
+  padding: 10px 14px;
+  border-radius: 7px;
+  color: var(--blue);
+  font-size: 0.82rem;
+  margin-bottom: 22px;
+}
+.demo-banner button {
+  border: 0;
+  background: none;
+  color: inherit;
+  text-decoration: underline;
+  min-height: 36px;
+}
+.mobile-settings {
+  display: none;
+}
+@media (max-width: 600px) {
+  .topbar .mobile-settings {
+    display: inline-grid;
+  }
+  .topbar {
+    gap: 5px;
+  }
+  .topbar .quick-capture {
+    margin-left: auto;
+  }
+  .demo-banner {
+    align-items: flex-start;
+  }
+}
+.goal-card h3,
+.analysis-card h2 {
+  overflow-wrap: anywhere;
+}
+input[type="date"] {
+  min-width: 0;
+}
+dialog:modal #toast {
+  z-index: 50;
+}

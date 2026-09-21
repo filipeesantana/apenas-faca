@@ -1,0 +1,318 @@
+/* Loaded before the base sheet; media rules use extra specificity deliberately. */
+@media (min-width: 1600px) {
+  body .home-grid {
+    gap: 42px;
+  }
+  body main {
+    padding-top: 60px;
+  }
+}
+@media (max-width: 1150px) {
+  body .sidebar {
+    width: 210px;
+    padding: 30px 14px;
+  }
+  body .workspace {
+    margin-left: 210px;
+  }
+  body main {
+    padding: 34px 28px;
+  }
+  body .topbar {
+    padding: 0 28px;
+  }
+  body .home-grid {
+    gap: 22px;
+    grid-template-columns: minmax(0, 1.5fr) minmax(230px, 1fr);
+  }
+  body .focus-card {
+    padding: 25px;
+  }
+  body .goals-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  body .section-label > span {
+    display: none;
+  }
+  body .page-footer {
+    padding: 20px 28px;
+  }
+}
+@media (max-width: 850px) {
+  body .sidebar {
+    width: 84px;
+    padding: 25px 12px;
+  }
+  body .brand {
+    margin: 0 auto 35px;
+  }
+  body .brand > span:last-child,
+  body .nav-label,
+  body .sidebar nav a > span,
+  body .sidebar-bottom button > span,
+  body .sidebar-bottom p {
+    display: none;
+  }
+  body .sidebar nav a {
+    justify-content: center;
+    padding: 12px;
+    position: relative;
+  }
+  body .badge {
+    position: absolute;
+    right: 0;
+    top: 0;
+    font-size: 0.65rem;
+  }
+  body .sidebar-bottom button {
+    padding: 12px;
+    margin: auto;
+  }
+  body .workspace {
+    margin-left: 84px;
+  }
+  body .home-grid {
+    grid-template-columns: 1fr;
+  }
+  body .home-side {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+  }
+  body .home-side > .section-label,
+  body .week-note {
+    grid-column: 1/-1;
+  }
+  body .home-side .goal-card {
+    margin-bottom: 0;
+  }
+  body .progress-grid {
+    grid-template-columns: 1fr;
+  }
+  body .stats {
+    grid-template-columns: 1fr 1fr;
+  }
+  body #toast {
+    left: 50%;
+  }
+  body .insights {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 600px) {
+  body .sidebar {
+    position: fixed;
+    top: auto;
+    bottom: 0;
+    width: 100%;
+    height: 73px;
+    padding: 5px 4px calc(5px + env(safe-area-inset-bottom));
+    border-right: 0;
+    border-top: 1px solid var(--line);
+    z-index: 10;
+    display: block;
+  }
+  body .sidebar .brand,
+  body .sidebar-bottom {
+    display: none;
+  }
+  body .sidebar nav {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 1px;
+    height: 100%;
+  }
+  body .sidebar nav a {
+    flex-direction: column;
+    gap: 4px;
+    padding: 7px 0 4px;
+    border-radius: 6px;
+    min-width: 0;
+  }
+  body .sidebar nav a > span {
+    display: block;
+    font-size: 0.6rem;
+    letter-spacing: -0.2px;
+    white-space: normal;
+    text-align: center;
+    line-height: 1.15;
+  }
+  body .sidebar nav a svg {
+    width: 19px;
+    height: 19px;
+  }
+  body .badge {
+    right: 8px;
+    top: 0;
+  }
+  body .workspace {
+    margin-left: 0;
+    padding-bottom: 77px;
+  }
+  body .topbar {
+    height: 65px;
+    padding: 0 20px;
+    font-size: 0.75rem;
+  }
+  body .quick-capture {
+    font-size: 0.8rem;
+  }
+  body main {
+    padding: 29px 20px;
+    min-height: calc(100dvh - 200px);
+  }
+  body .page-heading {
+    align-items: flex-start;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-bottom: 24px;
+  }
+  body .page-heading h1 {
+    font-size: 2.1rem;
+    letter-spacing: -1px;
+  }
+  body .page-heading > div > p:last-child {
+    font-size: 0.92rem;
+  }
+  body .eyebrow {
+    font-size: 0.65rem;
+  }
+  body .capture-form {
+    margin-bottom: 27px;
+    gap: 0;
+  }
+  body .capture-form input {
+    font-size: 0.88rem;
+    padding: 10px 7px;
+  }
+  body .capture-form button {
+    font-size: 0.82rem;
+    padding: 10px 12px;
+  }
+  body .capture-form button svg {
+    display: none;
+  }
+  body .focus-card {
+    padding: 25px 23px;
+  }
+  body .focus-card h2 {
+    font-size: 1.7rem;
+  }
+  body .task-row {
+    padding: 14px 10px;
+    gap: 10px;
+  }
+  body .task-main strong {
+    font-size: 0.9rem;
+  }
+  body .task-row > .icon-button {
+    min-width: 30px;
+  }
+  body .meta {
+    font-size: 0.75rem;
+    gap: 4px 9px;
+  }
+  body .home-side {
+    display: block;
+  }
+  body .home-side .goal-card {
+    margin-bottom: 16px;
+  }
+  body .page-footer {
+    padding: 8px 20px 18px;
+    font-size: 0.67rem;
+  }
+  body .filters {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  body .filters label {
+    min-width: 0;
+    flex: 1;
+  }
+  body .filters .search-label {
+    flex-basis: 100%;
+    max-width: none;
+    margin: 0;
+  }
+  body .goals-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  body .stats {
+    gap: 23px 12px;
+  }
+  body .stats strong {
+    font-size: 1.4rem;
+  }
+  body .stats span {
+    font-size: 0.76rem;
+  }
+  body .panel {
+    padding: 19px;
+  }
+  body .progress-grid {
+    gap: 0;
+  }
+  body .analysis-card {
+    padding: 22px;
+  }
+  body .analysis-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  body .analysis-actions button {
+    width: 100%;
+  }
+  body .inbox-item {
+    gap: 12px;
+  }
+  body .inbox-item h3 {
+    font-size: 1rem;
+  }
+  body .inbox-item .secondary {
+    padding: 8px 12px;
+  }
+  body .item-number {
+    display: none;
+  }
+  body .dialog-body {
+    padding: 20px;
+  }
+  body .dialog-heading {
+    padding: 14px 18px 10px;
+  }
+  body dialog {
+    width: calc(100% - 16px);
+    max-height: 94dvh;
+  }
+  body .form-row {
+    grid-template-columns: 1fr;
+  }
+  body #toast {
+    bottom: 90px;
+    width: max-content;
+    font-size: 0.82rem;
+  }
+  body .date-data {
+    grid-template-columns: 1fr 1fr;
+  }
+  body .timeline time {
+    font-size: 0.68rem;
+  }
+  body .topbar .mobile-settings {
+    display: inline-grid;
+  }
+  body .topbar > span {
+    max-width: 140px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+    scroll-behavior: auto !important;
+  }
+}
