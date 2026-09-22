@@ -15,7 +15,7 @@ import { inboxView } from './features/inbox.js';
 import { tasksView } from './features/tasks.js';
 import { goalsView, goalDetailView } from './features/goals.js';
 import { progressView } from './features/progress.js';
-import { analyticsView } from './features/analytics.js';
+import { analysisView } from './features/analysis/view.js';
 import { areaView } from './features/area.js';
 import { settingsView, applyTheme } from './features/settings.js';
 import { openAddMenu } from './features/add-menu.js';
@@ -31,7 +31,7 @@ const VIEWS = {
   tarefas: { render: tasksView, title: 'Tarefas' },
   metas: { render: (r) => (r.param ? goalDetailView(r) : goalsView(r)), title: 'Metas' },
   progresso: { render: progressView, title: 'Progresso' },
-  analises: { render: analyticsView, title: 'Análises' },
+  analises: { render: analysisView, title: 'Análises' },
   area: { render: areaView, title: 'Área' },
   ajustes: { render: settingsView, title: 'Ajustes' },
 };

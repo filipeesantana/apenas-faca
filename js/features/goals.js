@@ -37,8 +37,10 @@ const isIdle = (g) => {
 export function goalsView(route) {
   const goals = allGoals();
   const filterIdle = route.query.f === 'paradas';
+  const filterNoStep = route.query.f === 'sem-passo';
   let active = goals.filter((g) => g.status === 'active').sort((a, b) => b.updatedAt - a.updatedAt);
   if (filterIdle) active = active.filter(isIdle);
+  if (filterNoStep) active = active.filter((g) => !nextStepOf(g.id));
   const done = goals.filter((g) => g.status === 'done').sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
   const archived = goals.filter((g) => g.status === 'archived');
   const stalled = goals.some((g) => g.status === 'active' && isIdle(g));
@@ -54,14 +56,14 @@ export function goalsView(route) {
     }));
     return view;
   }
-  if (filterIdle) {
+  if (filterIdle || filterNoStep) {
     add(view, h('div', { class: 'filter-banner' },
-      h('span', null, 'Mostrando: ', h('strong', null, 'metas sem tarefas nem progresso há mais de 30 dias')),
+      h('span', null, 'Mostrando: ', h('strong', null, filterIdle ? 'metas sem tarefas nem progresso há mais de 30 dias' : 'metas sem próximo passo definido')),
       button('Ver todas', { variant: 'ghost', size: 'sm', icon: 'x', onClick: () => go('metas') })));
   }
   add(view, active.length
     ? h('ul', { class: 'goal-list' }, active.map((g) => h('li', null, goalRow(g))))
-    : emptyState({ icon: 'target', title: filterIdle ? 'Nenhuma meta parada.' : 'Nenhuma meta em andamento.', text: filterIdle ? 'Todas as metas ativas têm movimento recente ou um próximo passo.' : 'Quando quiser começar algo novo, é só criar.', compact: true }));
+    : emptyState({ icon: 'target', title: filterIdle ? 'Nenhuma meta parada.' : filterNoStep ? 'Todas as metas têm um próximo passo.' : 'Nenhuma meta em andamento.', text: filterNoStep ? 'Nada a definir por enquanto.' : filterIdle ? 'Todas as metas ativas têm movimento recente ou um próximo passo.' : 'Quando quiser começar algo novo, é só criar.', compact: true }));
 
   for (const [label, list] of [['Concluídas', done], ['Arquivadas', archived]]) {
     if (!list.length) continue;
@@ -119,7 +121,8 @@ export function goalDetailView(route) {
       areaTag(g.areaId, { link: true }),
       g.targetDate && h('span', { class: 'meta-muted' }, `até ${formatDayLong(g.targetDate)}`),
       g.status === 'done' && h('span', { class: 'pill pill--ok' }, icon('check', { size: 12 }), 'concluída'),
-      g.status === 'archived' && h('span', { class: 'pill' }, 'arquivada')),
+      g.status === 'archived' && h('span', { class: 'pill' }, 'arquivada'),
+      h('a', { class: 'goal-head__link', href: `#/analises?meta=${g.id}` }, icon('lens', { size: 13 }), 'Analisar esta meta')),
     h('div', { class: 'goal-head__row' },
       h('h1', { class: 'page-title' }, g.title),
       active && g.type !== 'steps' && button('Registrar progresso', {
@@ -248,7 +251,7 @@ function planningSection(g, focus) {
       r.secondary && h('p', { class: 'plan-result__sub' }, r.secondary),
       pace?.recent && h('p', { class: 'plan-result__cmp' },
         `Sua média recente é de ${rateText(g, pace.recent.perDay)} — ${pace.recent.perDay >= r.perDay * 0.95 ? 'suficiente para esse prazo' : 'abaixo do necessário para esse prazo'}. `,
-        helpTip(HELP.mediaRecente, { label: 'Média recente' })),
+        helpTip(HELP.mediaRecente)),
       !sel.fromGoal && sel.endDate !== g.targetDate && button('Usar este prazo na meta', {
         size: 'sm', icon: 'calendar',
         onClick: async () => { try { await updateGoal(g.id, { targetDate: sel.endDate }); toast(`Prazo da meta: ${formatDayLong(sel.endDate)}.`); } catch (err) { toastError(err); } },
@@ -313,7 +316,7 @@ function projectionSection(g) {
   else if (g.status === 'active' && progressOf(g).remaining > 0) lines.push('Ainda não há histórico suficiente para projetar seu ritmo. Com algumas semanas de registros, a linha do ritmo recente aparece.');
   const label = `Evolução de ${g.title}: ${formatGoalValue(g, model.current)} de ${formatGoalValue(g, model.target)}. ${lines.join(' ')}`;
   return h('section', { class: 'card section' },
-    sectionHead(history.length > 1 ? 'Evolução e projeção' : 'Projeção'),
+    sectionHead(labelWithHelp(history.length > 1 ? 'Evolução e projeção' : 'Projeção', HELP.projecao, { className: 'label' })),
     projectionChart({
       history, model, formatValue: fmt, formatDate: (t) => formatMonthShort(new Date(t)), label,
       pointTip: (pt) => `${formatDay(dayKey(pt.t))} · ${pt.start ? `início: ${formatGoalValue(g, pt.v)}` : `${pt.kind === 'correction' ? 'correção' : pt.delta >= 0 ? `+ ${formatGoalValue(g, pt.delta)}` : `− ${formatGoalValue(g, -pt.delta)}`} (total ${formatGoalValue(g, pt.v)})`}`,

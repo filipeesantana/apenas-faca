@@ -70,7 +70,7 @@ function renderTask(t, sheet) {
   } else {
     const ranked = rankTasks().find((r) => r.task.id === t.id);
     if (ranked?.reasons.length) {
-      add(wrap, h('p', { class: 'why' }, labelWithHelp('Por que aparece como prioridade', HELP.prioridade, { className: 'why__label' }), h('span', null, explain(ranked))));
+      add(wrap, h('div', { class: 'why' }, labelWithHelp('Por que aparece como prioridade', HELP.prioridade, { className: 'why__label' }), h('span', null, explain(ranked))));
     }
     add(wrap, h('div', { class: 'task-sheet__primary' },
       button('Concluir', { variant: 'primary', icon: 'check', onClick: () => { sheet.close(); completeWithFeedback(t.id); } }),

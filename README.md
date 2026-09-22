@@ -29,7 +29,7 @@ Funciona no navegador do computador, tablet ou celular. Não há cadastro, login
 | **Metas** | Quatro formas de acompanhar: **valor** (ex.: juntar R$ 40.000), **quantidade** (40 aulas), **tempo** (60 horas de estudo) e **etapas**. Cada meta reúne progresso, próximo passo, histórico e projeção numa só tela. |
 | **Planejamento** | “Como posso chegar lá?”: o ritmo necessário para cada prazo (6, 12, 24 meses…), comparação entre cenários e quanto tempo levaria mantendo um ritmo escolhido. |
 | **Progresso** | O que aconteceu em 7 dias, 30 dias, no mês ou num período à sua escolha — incluindo **planejado × realizado** por semana e sua capacidade média recente. |
-| **Análises** | Uma central de interpretação: visão geral, pontos que merecem atenção (atrasos, acúmulo, adiamentos, metas fora do ritmo, áreas esquecidas), tendências e dados de apoio. Cada análise leva a uma ação e explica “como chegamos a isso”. |
+| **Análises** | Em três escolhas — o que analisar (tudo, uma área, uma meta ou as tarefas), o período e o jeito de ver (Essencial, Detalhado ou Comparar) — o Norte mostra um resumo em frases simples, um gráfico que responde a uma pergunta, o que merece atenção e no máximo duas ações para agora. Cada ponto traz “Entender análise”, com os dados usados e o cálculo. Inclui “Revisar minha semana”, em cinco passos. |
 | **Revisão guiada** | “Revisar meu plano”: uma pendência por vez — fazer agora, escolher nova data, manter sem prazo, concluir ou cancelar. Feita para quem acumulou muita coisa. |
 | **Anotações** | Guarde algo rapidamente e decida depois se vira tarefa, meta ou lembrete. |
 | **Backup local** | Exporte e restaure todos os seus dados em um arquivo. |
@@ -66,7 +66,8 @@ js/
   app.js            inicialização e navegação entre telas
   core/             banco local (IndexedDB), estado em memória, eventos e rotas
   domain/           regras do produto: tarefas, metas, prioridade, planejamento,
-                    análises e estatísticas — sem interface
+                    pontos de atenção e estatísticas — sem interface
+  analysis/         cálculo das análises: períodos, resumo, séries e comparação
   content/          microtextos contextuais
   ui/               componentes visuais reutilizáveis (dicas, menus, gráficos, painéis)
   features/         telas e fluxos (Início, Tarefas, Metas, Progresso, Análises…)

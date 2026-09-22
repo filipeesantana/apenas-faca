@@ -1,11 +1,12 @@
 /** Ações de tarefa com feedback visual, evento e "Desfazer". */
 import { state, undo } from '../core/store.js';
-import { completeTask, dropTask, startTask, pauseTask, reopenTask, setDueDate, deleteTask } from '../domain/tasks.js';
+import { completeTask, dropTask, startTask, pauseTask, reopenTask, setDueDate, deleteTask, tasksForGoal, isOpen } from '../domain/tasks.js';
 import { addProgress } from '../domain/goals.js';
 import { toast, toastError } from '../ui/toast.js';
 import { formatDue } from '../utils/dates.js';
 import { formatMinutes } from '../utils/numbers.js';
 import { progressFeedback } from './progress-log.js';
+import { openTaskForm } from './task-form.js';
 
 const busy = new Set();
 
@@ -49,7 +50,19 @@ export async function completeWithFeedback(id, el) {
     if (!token) return;
     const follow = goalFollowUp(t);
     if (follow) toast(`Tarefa concluída. Registrar na meta “${state.goals.get(t.goalId).title}”?`, { actions: [follow, { label: 'Desfazer', fn: () => undo(token) }], duration: 8000 });
-    else withUndo('Tarefa concluída.', token);
+    const g = t.goalId ? state.goals.get(t.goalId) : null;
+    const needsNext = g && g.status === 'active' && !tasksForGoal(g.id).some(isOpen);
+    if (needsNext) {
+      // O passo da meta foi concluído e não há outro: pergunta, sem obrigar.
+      toast(`${follow ? '' : 'Tarefa concluída. '}Deseja definir o próximo passo da meta “${g.title}”?`, {
+        actions: [
+          { label: 'Definir', fn: () => openTaskForm({ goalId: g.id, areaId: g.areaId, nextStep: true }) },
+          { label: 'Agora não', fn: () => {} },
+          !follow && { label: 'Desfazer', fn: () => undo(token) },
+        ],
+        duration: 10000,
+      });
+    } else if (!follow) withUndo('Tarefa concluída.', token);
   } catch (err) {
     el?.classList.remove('is-completing');
     toastError(err, { retry: () => completeWithFeedback(id) });

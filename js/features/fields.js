@@ -2,7 +2,7 @@
 import { h } from '../ui/dom.js';
 import { icon } from '../ui/icons.js';
 import { chipGroup } from '../ui/components.js';
-import { labelWithHelp, HELP } from '../ui/help.js';
+import { labelWithHelp, helpTip, HELP } from '../ui/help.js';
 import { DUE_PRESETS, IMPORTANCE, ESTIMATES } from '../domain/tasks.js';
 import { activeGoals } from '../domain/goals.js';
 import { formatDayLong, distanceText, today } from '../utils/dates.js';
@@ -66,17 +66,18 @@ export function goalField(goalId, nextStep, onChange) {
   if (!goals.length) return null;
   let g = goalId || '';
   let ns = !!nextStep;
-  const check = h('label', { class: ['switch', !g && 'is-disabled'] },
+  const toggle = h('label', { class: ['switch', !g && 'is-disabled'] },
     h('input', { type: 'checkbox', checked: ns, disabled: !g, onChange: (e) => { ns = e.target.checked; onChange(g || null, ns); } }),
     h('span', { class: 'switch__track', 'aria-hidden': 'true' }),
-    labelWithHelp('É o próximo passo desta meta', HELP.proximoPasso, { className: 'switch__label' }));
+    h('span', { class: 'switch__label' }, 'É o próximo passo desta meta'));
+  const check = h('div', { class: 'switch-field' }, h('div', { class: 'switch-field__row' }, toggle, helpTip(HELP.proximoPasso)));
   const select = h('select', {
     class: 'input', 'aria-label': 'Meta relacionada',
     onChange: (e) => {
       g = e.target.value;
       const input = check.querySelector('input');
       input.disabled = !g;
-      check.classList.toggle('is-disabled', !g);
+      toggle.classList.toggle('is-disabled', !g);
       if (!g) { ns = false; input.checked = false; }
       onChange(g || null, ns);
     },

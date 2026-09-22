@@ -109,7 +109,7 @@ export function weeklyFlow(weeks = 8) {
  * reagendada ou atualmente). O desfecho é visto no fim da semana:
  * concluída · adiada para fora da semana · cancelada · ainda pendente.
  */
-export function weekPlan(start) {
+export function weekPlan(start, match = null) {
   const end = addDays(start, 7);
   const toTs = startOfDayTs(end);
   const within = (d) => d && d >= start && d < end;
@@ -119,6 +119,7 @@ export function weekPlan(start) {
     else if ((e.type === 'task.postponed' || e.type === 'task.rescheduled') && within(e.metadata?.to)) planned.add(e.entityId);
   }
   for (const t of state.tasks.values()) if (within(t.dueDate)) planned.add(t.id);
+  if (match) for (const id of [...planned]) if (!match(id)) planned.delete(id);
 
   const out = { start, planned: 0, done: 0, postponed: 0, dropped: 0, pending: 0 };
   for (const id of planned) {
@@ -136,10 +137,14 @@ export function weekPlan(start) {
   return out;
 }
 
-export function plannedVsDone(weeks = 6) {
+export function plannedVsDone(weeks = 6, match = null, until = today()) {
+  const lastWeek = startOfWeek(until);
   const thisWeek = startOfWeek(today());
   const list = [];
-  for (let i = weeks - 1; i >= 0; i--) list.push({ ...weekPlan(addDays(thisWeek, -7 * i)), current: i === 0 });
+  for (let i = weeks - 1; i >= 0; i--) {
+    const start = addDays(lastWeek, -7 * i);
+    list.push({ ...weekPlan(start, match), current: start === thisWeek });
+  }
   return list;
 }
 

@@ -22,6 +22,7 @@ import { openTaskSheet } from './task-sheet.js';
 import { taskRow } from './task-row.js';
 import { completeWithFeedback, startWithFeedback, pauseWithFeedback } from './task-actions.js';
 import { insightCard } from './insight-card.js';
+import { openWeekReview } from './analysis/week-review.js';
 import { goalRow } from './goals.js';
 import { openGoalForm } from './goal-form.js';
 import { openTaskForm } from './task-form.js';
@@ -197,8 +198,8 @@ function attentionSection(overloaded) {
   const list = homeInsights(2, overloaded ? ['overdue'] : []);
   if (!list.length) return null;
   return h('section', { class: 'panel', 'aria-labelledby': 'h-att' },
-    sectionHead('Merece atenção', { id: 'h-att' }),
-    h('div', { class: 'insight-stack' }, list.map((i) => insightCard(i, { compact: true }))));
+    sectionHead('Merece atenção', { id: 'h-att', action: h('button', { type: 'button', class: 'btn btn--ghost btn--sm', onClick: () => openWeekReview() }, h('span', null, 'Revisar minha semana')) }),
+    h('ol', { class: 'ins-list ins-list--home' }, list.map((i) => insightCard(i))));
 }
 
 function inboxLine() {

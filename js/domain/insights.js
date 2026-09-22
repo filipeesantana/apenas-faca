@@ -1,239 +1,306 @@
 /**
- * Motor de insights: regras determinísticas → poucos alertas relevantes.
+ * Motor de insights: regras determinísticas e explicáveis, sem IA.
  *
- * Cada insight tem:
- *  - key: identidade estável (deduplicação);
- *  - category: execução · acúmulo · consistência · direção · ritmo · equilíbrio · cuidados;
- *  - severity: 3 atenção · 2 observar · 1 registro;
- *  - signature: "tamanho" do problema. Dispensado com a mesma assinatura → volta só após o cooldown;
- *  - how: linhas de "Como chegamos a isso?" (transparência);
- *  - actions: portas para ação (a interface decide como executar cada tipo).
+ * Cada insight:
+ *  - key/signature: identidade e "tamanho" (deduplicação e cooldown ao ocultar);
+ *  - category: classificação interna (acumulo, consistencia, execucao, direcao, ritmo, equilibrio, cuidados);
+ *  - label: rótulo discreto para o usuário (Atrasos, Adiamentos, Ritmo, Metas…);
+ *  - priority: severidade × 100 + magnitude (0–99) → ordem de relevância;
+ *  - title + line: o que aparece fechado; facts, period, how, meaning: "Entender análise";
+ *  - actions: o que fazer (a interface decide como executar cada tipo).
+ * O escopo (tudo, área, meta, tarefas) filtra tarefas, metas e eventos antes das regras.
  */
 import { state, commit } from '../core/store.js';
-import { DAY, today, formatDay, formatMonthYear, daysSince, diffDays } from '../utils/dates.js';
+import { DAY, today, formatDay, formatMonthYear, daysSince, diffDays, dayKey } from '../utils/dates.js';
 import { plural, timesText, formatPercent } from '../utils/numbers.js';
-import { openTasks, isOverdue, stuckTasks, tasksForGoal, isOpen } from './tasks.js';
+import { openTasks, isOverdue, tasksForGoal, isOpen } from './tasks.js';
 import { activeGoals, paceOf, progressOf, lastMovementAt, MILESTONE_TEXT, formatGoalValue } from './goals.js';
 import { rateText } from './planning.js';
 import { openInboxItems } from './inbox.js';
 import { lastActivityByArea } from '../core/events.js';
-import { listAreas } from './areas.js';
+import { listAreas, getArea } from './areas.js';
 import { completedIds, countType, recentCapacity, thisWeekLoad } from './stats.js';
 
 export const CATEGORIES = {
-  execucao: { label: 'Execução', question: 'O que você está fazendo?' },
-  acumulo: { label: 'Acúmulo', question: 'O que está ficando para trás?' },
-  consistencia: { label: 'Consistência', question: 'O que está sendo adiado ou abandonado?' },
-  direcao: { label: 'Direção', question: 'Suas ações estão ligadas às suas metas?' },
-  ritmo: { label: 'Ritmo', question: 'As metas avançam no ritmo necessário?' },
-  equilibrio: { label: 'Equilíbrio', question: 'Alguma área está esquecida?' },
-  cuidados: { label: 'Cuidados', question: 'Seus dados estão protegidos?' },
+  execucao: { label: 'Execução' }, acumulo: { label: 'Acúmulo' }, consistencia: { label: 'Adiamentos' },
+  direcao: { label: 'Metas' }, ritmo: { label: 'Ritmo' }, equilibrio: { label: 'Áreas' }, cuidados: { label: 'Backup' },
 };
 
 const COOLDOWN = { 3: 2 * DAY, 2: 4 * DAY, 1: 7 * DAY };
 const TONE = { 3: 'attention', 2: 'watch', 1: 'info' };
 const NUM = ['nenhuma', 'uma', 'duas', 'três', 'quatro', 'cinco', 'seis', 'sete', 'oito', 'nove', 'dez'];
 const numF = (n) => NUM[n] || String(n);
+const cap1 = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+const mag = (n) => Math.max(0, Math.min(99, Math.round(n)));
 
-function push(list, ins) { list.push({ tone: ins.positive ? 'good' : TONE[ins.severity], ...ins }); }
+function push(list, ins) {
+  list.push({ tone: ins.positive ? 'good' : TONE[ins.severity], priority: ins.severity * 100 + (ins.magnitude || 0), ...ins });
+}
 
-export function computeInsights(now = Date.now()) {
+/** Filtros por escopo — mesma semântica do motor de análise. */
+function scoped(sel = { scope: 'tudo' }) {
+  const scope = sel.scope || 'tudo';
+  const taskOk = (t) => (scope === 'area' ? t.areaId === sel.areaId : scope === 'meta' ? t.goalId === sel.goalId : true);
+  const goalOk = (g) => (scope === 'tarefas' ? false : scope === 'area' ? g.areaId === sel.areaId : scope === 'meta' ? g.id === sel.goalId : true);
+  const eventOk = (e) => (scope === 'tarefas' ? e.entityType === 'task' : scope === 'area' ? e.areaId === sel.areaId : scope === 'meta' ? (e.entityId === sel.goalId || e.metadata?.goalId === sel.goalId) : true);
+  return { scope, taskOk, goalOk, eventOk, global: scope === 'tudo', taskish: scope === 'tudo' || scope === 'tarefas' };
+}
+
+function scopedCounts(eventOk, from, to = Infinity) {
+  let created = 0; const done = new Set();
+  for (const e of state.events) {
+    if (e.createdAt < from || e.createdAt >= to || !eventOk(e)) continue;
+    if (e.type === 'task.created') created++;
+    else if (e.type === 'task.completed') done.add(e.entityId);
+  }
+  return { created, done: done.size };
+}
+
+export function computeInsights(sel = { scope: 'tudo' }, now = Date.now()) {
+  const S = scoped(sel);
   const list = [];
   const T = today();
-  const open = openTasks();
+  const open = openTasks().filter(S.taskOk);
+  const goals = activeGoals().filter(S.goalOk);
   const appAgeDays = state.settings.firstRunAt ? (now - state.settings.firstRunAt) / DAY : 0;
+  const where = S.scope === 'area' ? ` em ${getArea(sel.areaId)?.name || 'nesta área'}` : S.scope === 'meta' ? ' desta meta' : '';
 
-  /* ----- Acúmulo ----- */
+  /* ----- Atrasos ----- */
   const overdue = open.filter((t) => isOverdue(t, T)).sort((a, b) => a.dueDate.localeCompare(b.dueDate));
   if (overdue.length) {
     const first = overdue[0];
+    const oldest = diffDays(first.dueDate, T);
     const many = overdue.length >= 8;
     push(list, {
-      key: 'overdue', category: 'acumulo', severity: overdue.length >= 5 ? 3 : 2, signature: overdue.length,
-      title: overdue.length === 1 ? '1 tarefa passou do prazo.' : many ? `Existem ${overdue.length} pendências acumuladas.` : `${overdue.length} tarefas passaram do prazo.`,
-      body: many
-        ? 'Você não precisa resolver tudo agora. Comece pelas que merecem mais atenção — uma de cada vez.'
-        : overdue.length === 1 ? `“${first.title}” estava prevista para ${formatDay(first.dueDate)}.` : `A mais antiga é “${first.title}”, prevista para ${formatDay(first.dueDate)}.`,
+      key: `overdue:${S.scope}`, category: 'acumulo', label: 'Atrasos', severity: overdue.length >= 5 ? 3 : 2, magnitude: mag(overdue.length * 6 + oldest), signature: overdue.length,
+      title: overdue.length === 1 ? `1 tarefa${where} passou do prazo.` : many ? `Existem ${overdue.length} pendências acumuladas${where}.` : `${overdue.length} tarefas${where} passaram do prazo.`,
+      line: many ? 'Você não precisa resolver tudo agora. Comece pelas que merecem mais atenção.' : `A mais antiga é “${first.title}”, atrasada há ${oldest === 1 ? '1 dia' : `${oldest} dias`}.`,
       items: overdue.map((t) => t.id),
-      facts: [{ v: overdue.length, l: overdue.length === 1 ? 'atrasada' : 'atrasadas' }, { v: `${diffDays(first.dueDate, T)} dias`, l: 'a mais antiga' }],
+      facts: [{ v: overdue.length, l: overdue.length === 1 ? 'atrasada' : 'atrasadas' }, { v: oldest === 1 ? '1 dia' : `${oldest} dias`, l: 'de atraso na mais antiga' }],
+      period: 'Situação de hoje.',
       how: [`Tarefas abertas com prazo anterior a hoje: ${overdue.length}.`, `A mais antiga venceu em ${formatDay(first.dueDate)}.`],
+      meaning: 'Prazos vencidos pedem uma decisão: fazer, escolher uma nova data realista ou cancelar o que perdeu sentido.',
       actions: overdue.length === 1
         ? [{ label: 'Ver tarefa', type: 'openTask', id: first.id, primary: true }]
-        : [{ label: 'Ver tarefas', href: '#/tarefas?f=atrasadas', primary: true }, { label: many ? 'Revisar prioridades' : 'Revisar uma a uma', type: 'review', ids: overdue.map((t) => t.id) }],
+        : [{ label: 'Revisar tarefas', type: 'review', ids: overdue.map((t) => t.id), primary: true }, { label: 'Ver na lista', href: '#/tarefas?f=atrasadas' }],
     });
   }
 
+  /* ----- Acúmulo ----- */
+  if (S.scope !== 'meta') {
+    const c = scopedCounts(S.eventOk, now - 14 * DAY);
+    if (c.created >= 8 && c.created > c.done * 1.5 + 2) {
+      push(list, {
+        key: `accumulation:${S.scope}`, category: 'acumulo', label: 'Acúmulo', group: 'review', severity: 2, magnitude: mag((c.created - c.done) * 3), signature: Math.round(c.created / Math.max(c.done, 1)),
+        title: `Sua lista está crescendo${where}.`,
+        line: `${c.created} tarefas criadas e ${c.done} concluídas nos últimos 14 dias.`,
+        facts: [{ v: c.created, l: 'criadas' }, { v: c.done, l: 'concluídas' }, { v: `+${c.created - c.done}`, l: 'na lista' }],
+        period: 'Últimos 14 dias.',
+        how: ['Nos últimos 14 dias:', `${c.created} tarefas foram criadas.`, `${c.done} foram concluídas.`, `Portanto, as pendências aumentaram em cerca de ${c.created - c.done} (sem contar as canceladas).`],
+        meaning: 'Quando entra mais do que sai, a lista fica mais difícil de ler. Revisar ajuda a manter só o que ainda faz sentido.',
+        actions: [{ label: 'Revisar pendências', type: 'review', primary: true }],
+      });
+    } else if (open.length >= 25) {
+      push(list, {
+        key: `backlog:${S.scope}`, category: 'acumulo', label: 'Acúmulo', group: 'review', severity: 2, magnitude: mag(open.length), signature: Math.floor(open.length / 5),
+        title: `Existem ${open.length} tarefas abertas${where}.`, line: 'Uma lista longa costuma esconder o que importa.',
+        facts: [{ v: open.length, l: 'abertas' }], period: 'Situação de hoje.',
+        how: [`Tarefas pendentes ou em andamento: ${open.length}.`],
+        meaning: 'Algumas podem já não fazer sentido. Revisar uma por vez deixa a lista mais leve.',
+        actions: [{ label: 'Revisar meu plano', type: 'review', primary: true }],
+      });
+    }
+  }
+
+  if (S.global) {
+    const inbox = openInboxItems();
+    const oldestDays = inbox.length ? daysSince(inbox[0].createdAt) : 0;
+    if (inbox.length >= 5 || (inbox.length && oldestDays >= 3)) {
+      push(list, {
+        key: 'inbox', category: 'acumulo', label: 'Anotações', severity: inbox.length >= 10 ? 2 : 1, magnitude: mag(inbox.length * 4 + oldestDays), signature: Math.floor(inbox.length / 3),
+        title: `${plural(inbox.length, 'anotação espera', 'anotações esperam')} uma decisão.`,
+        line: oldestDays >= 3 ? `A mais antiga está guardada há ${oldestDays} dias.` : 'Decidir o que cada uma é leva poucos minutos.',
+        facts: [{ v: inbox.length, l: 'anotações' }], period: 'Situação de hoje.',
+        how: [`Anotações ainda não organizadas: ${inbox.length}.`],
+        meaning: 'Anotações são temporárias: viram tarefa, meta ou lembrete.',
+        actions: [{ label: 'Organizar agora', type: 'organize', primary: true }],
+      });
+    }
+  }
+
+  /* ----- Adiamentos ----- */
   const from14 = now - 14 * DAY;
-  const created14 = countType('task.created', from14);
-  const done14 = completedIds(from14).size;
-  if (created14 >= 8 && created14 > done14 * 1.5 + 2) {
-    push(list, {
-      key: 'accumulation', category: 'acumulo', group: 'review', severity: 2, signature: Math.round(created14 / Math.max(done14, 1)),
-      title: `Você criou ${created14} tarefas nos últimos 14 dias e concluiu ${done14}.`,
-      body: 'Sua lista está crescendo mais rapidamente do que está sendo reduzida.',
-      facts: [{ v: created14, l: 'criadas' }, { v: done14, l: 'concluídas' }, { v: `+${created14 - done14}`, l: 'na lista' }],
-      how: [`Nos últimos 14 dias:`, `${created14} tarefas foram criadas.`, `${done14} foram concluídas.`, `Sua lista aumentou em cerca de ${created14 - done14} itens nesse período (sem contar as canceladas).`],
-      actions: [{ label: 'Revisar pendências', type: 'review', primary: true }, { label: 'Ver entradas e saídas', href: '#/analises?ver=fluxo' }],
-    });
-  } else if (open.length >= 25) {
-    push(list, {
-      key: 'backlog', category: 'acumulo', group: 'review', severity: 2, signature: Math.floor(open.length / 5),
-      title: `Existem ${open.length} tarefas abertas.`,
-      body: 'Uma lista longa costuma esconder o que importa. Algumas podem já não fazer sentido.',
-      facts: [{ v: open.length, l: 'abertas' }],
-      how: [`Tarefas pendentes ou em andamento: ${open.length}.`],
-      actions: [{ label: 'Revisar meu plano', type: 'review', primary: true }],
-    });
-  }
-
-  const inbox = openInboxItems();
-  const oldestDays = inbox.length ? daysSince(inbox[0].createdAt) : 0;
-  if (inbox.length >= 5 || (inbox.length && oldestDays >= 3)) {
-    push(list, {
-      key: 'inbox', category: 'acumulo', severity: inbox.length >= 10 ? 2 : 1, signature: Math.floor(inbox.length / 3),
-      title: `${plural(inbox.length, 'anotação espera', 'anotações esperam')} uma decisão.`,
-      body: oldestDays >= 3 ? `A mais antiga está guardada há ${oldestDays} dias. Decidir o que cada uma é leva poucos minutos.` : 'Decidir o que cada uma é leva poucos minutos.',
-      facts: [{ v: inbox.length, l: 'anotações' }, oldestDays ? { v: `${oldestDays} dias`, l: 'a mais antiga' } : null].filter(Boolean),
-      how: [`Anotações ainda não organizadas: ${inbox.length}.`],
-      actions: [{ label: 'Organizar agora', type: 'organize', primary: true }],
-    });
-  }
-
-  /* ----- Consistência ----- */
-  for (const t of stuckTasks(3).slice(0, 2)) {
+  open.filter((t) => (t.postponedCount || 0) >= 3).sort((a, b) => b.postponedCount - a.postponedCount).slice(0, 2).forEach((t) => {
     const recent = state.events.filter((e) => e.entityId === t.id && e.type === 'task.postponed' && e.createdAt >= from14).length;
     push(list, {
-      key: `stuck:${t.id}`, category: 'consistencia', severity: 2, signature: t.postponedCount,
+      key: `stuck:${t.id}`, category: 'consistencia', label: 'Adiamentos', severity: 2, magnitude: mag(t.postponedCount * 12 + recent * 5), signature: t.postponedCount,
       title: recent >= 2 ? `“${t.title}” foi adiada ${timesText(recent)} nos últimos 14 dias.` : `“${t.title}” já foi adiada ${timesText(t.postponedCount)}.`,
-      body: 'Quando algo é adiado tantas vezes, geralmente está grande demais, pouco claro ou já não importa.',
-      facts: [{ v: t.postponedCount, l: 'adiamentos' }, { v: recent, l: 'em 14 dias' }],
+      line: 'Talvez esteja grande demais, pouco clara ou já não importe.',
+      facts: [{ v: t.postponedCount, l: 'adiamentos no total' }, { v: recent, l: 'nos últimos 14 dias' }], period: 'Todo o histórico da tarefa.',
       how: [`Adiamentos no total: ${t.postponedCount}.`, `Nos últimos 14 dias: ${recent}.`, 'Conta como adiamento empurrar um prazo que já tinha chegado.'],
+      meaning: 'Adiar de novo raramente resolve. Vale fazer agora, dividir em algo menor, escolher uma data realista ou cancelar.',
       actions: [
+        { label: 'Escolher o que fazer', type: 'review', ids: [t.id], primary: true },
         { label: 'Ver tarefa', type: 'openTask', id: t.id },
-        { label: 'Fazer agora', type: 'startTask', id: t.id, primary: true },
-        { label: 'Escolher outra data', type: 'openTask', id: t.id },
-        { label: 'Cancelar', type: 'dropTask', id: t.id },
       ],
     });
-  }
-  const dropped30 = countType('task.dropped', now - 30 * DAY);
-  const done30 = completedIds(now - 30 * DAY).size;
-  if (dropped30 >= 6 && dropped30 >= done30 * 0.5) {
-    push(list, {
-      key: 'dropped', category: 'consistencia', severity: 1, signature: Math.floor(dropped30 / 3),
-      title: `Você cancelou ${dropped30} tarefas nos últimos 30 dias.`,
-      body: 'Cancelar é saudável. Mas, se acontece muito, talvez valha criar tarefas menores ou mais claras.',
-      facts: [{ v: dropped30, l: 'canceladas' }, { v: done30, l: 'concluídas' }],
-      how: [`Canceladas em 30 dias: ${dropped30}.`, `Concluídas no mesmo período: ${done30}.`],
-      actions: [{ label: 'Ver canceladas', href: '#/tarefas?ver=canceladas' }],
-    });
-  }
-
-  /* ----- Execução ----- */
-  const cap = recentCapacity();
-  const load = thisWeekLoad();
-  if (cap && load.planned >= Math.max(cap.avgDone * 1.5, cap.avgDone + 5)) {
-    push(list, {
-      key: 'capacity', category: 'execucao', severity: 2, signature: Math.floor(load.planned / 3),
-      title: 'Seu plano para esta semana está bem acima do seu ritmo recente.',
-      body: `Há ${load.planned} tarefas com prazo nesta semana. Nas últimas ${cap.weeks} semanas você concluiu, em média, ${Math.round(cap.avgDone)} por semana. Considere revisar quantidade, prazos ou importância.`,
-      facts: [{ v: load.planned, l: 'nesta semana' }, { v: Math.round(cap.avgDone), l: 'média por semana' }],
-      how: [`Tarefas com prazo nesta semana: ${load.planned} (${load.done} já concluídas).`, `Média de conclusões nas últimas ${cap.weeks} semanas completas: ${Math.round(cap.avgDone * 10) / 10} por semana.`],
-      actions: [{ label: 'Revisar esta semana', type: 'reviewWeek', primary: true }, { label: 'Ver planejado × realizado', href: '#/progresso' }],
-    });
-  }
-  const done7 = completedIds(now - 7 * DAY).size;
-  const donePrev7 = completedIds(now - 14 * DAY, now - 7 * DAY).size;
-  if (appAgeDays >= 14 && done7 + donePrev7 >= 3) {
-    push(list, {
-      key: 'momentum', category: 'execucao', group: 'momentum', severity: 1, signature: `${done7}-${donePrev7}`,
-      title: `Nos últimos 7 dias você concluiu ${plural(done7, 'tarefa', 'tarefas')}.`,
-      body: `Nos 7 dias anteriores ${donePrev7 === 1 ? 'foi 1' : `foram ${donePrev7}`}.`,
-      facts: [{ v: done7, l: 'últimos 7 dias' }, { v: donePrev7, l: '7 dias anteriores' }],
-      how: ['Contamos tarefas distintas concluídas em cada período de 7 dias.'],
-      actions: [{ label: 'Ver progresso', href: '#/progresso' }],
-    });
+  });
+  if (S.taskish) {
+    const dropped30 = countType('task.dropped', now - 30 * DAY);
+    const done30 = completedIds(now - 30 * DAY).size;
+    if (dropped30 >= 6 && dropped30 >= done30 * 0.5) {
+      push(list, {
+        key: 'dropped', category: 'consistencia', label: 'Cancelamentos', severity: 1, magnitude: mag(dropped30 * 3), signature: Math.floor(dropped30 / 3),
+        title: `${dropped30} tarefas foram canceladas nos últimos 30 dias.`, line: 'Cancelar é saudável; se acontece muito, talvez valha criar tarefas menores.',
+        facts: [{ v: dropped30, l: 'canceladas' }, { v: done30, l: 'concluídas' }], period: 'Últimos 30 dias.',
+        how: [`Canceladas em 30 dias: ${dropped30}.`, `Concluídas no mesmo período: ${done30}.`],
+        meaning: 'Muitos cancelamentos podem indicar tarefas criadas por impulso ou grandes demais.',
+        actions: [{ label: 'Ver canceladas', href: '#/tarefas?ver=canceladas', primary: true }],
+      });
+    }
   }
 
-  /* ----- Direção ----- */
-  const goals = activeGoals();
-  const idleGoals = goals.filter((g) => {
-    if (now - g.createdAt < 14 * DAY) return false;
+  /* ----- Planejamento e execução ----- */
+  if (S.taskish) {
+    const cap = recentCapacity();
+    const load = thisWeekLoad();
+    if (cap && load.planned >= Math.max(cap.avgDone * 1.5, cap.avgDone + 5)) {
+      push(list, {
+        key: 'capacity', category: 'execucao', label: 'Planejamento', severity: 2, magnitude: mag((load.planned - cap.avgDone) * 4), signature: Math.floor(load.planned / 3),
+        title: 'O plano desta semana está acima do seu ritmo recente.',
+        line: `${load.planned} tarefas com prazo nesta semana; você conclui em média ${Math.round(cap.avgDone)} por semana.`,
+        facts: [{ v: load.planned, l: 'nesta semana' }, { v: Math.round(cap.avgDone), l: 'média por semana' }], period: `Semana atual e últimas ${cap.weeks} semanas completas.`,
+        how: [`Tarefas com prazo nesta semana: ${load.planned} (${load.done} já concluídas).`, `Média de conclusões nas últimas ${cap.weeks} semanas: ${Math.round(cap.avgDone * 10) / 10} por semana.`],
+        meaning: 'Não significa que não dá para fazer. É um sinal para rever quantidade, prazos ou importância.',
+        actions: [{ label: 'Revisar esta semana', type: 'reviewWeek', primary: true }],
+      });
+    }
+    const done7 = completedIds(now - 7 * DAY).size;
+    const donePrev7 = completedIds(now - 14 * DAY, now - 7 * DAY).size;
+    if (appAgeDays >= 14 && done7 + donePrev7 >= 3) {
+      push(list, {
+        key: 'momentum', category: 'execucao', label: 'Execução', group: 'momentum', severity: 1, magnitude: 0, signature: `${done7}-${donePrev7}`,
+        title: `${cap1(plural(done7, 'tarefa concluída', 'tarefas concluídas'))} nos últimos 7 dias.`,
+        line: `Nos 7 dias anteriores ${donePrev7 === 1 ? 'foi 1' : `foram ${donePrev7}`}.`,
+        facts: [{ v: done7, l: 'últimos 7 dias' }, { v: donePrev7, l: '7 dias anteriores' }], period: 'Últimos 14 dias, em duas metades.',
+        how: ['Contamos tarefas distintas concluídas em cada período de 7 dias.'],
+        meaning: 'É só um registro do que aconteceu, sem julgamento.',
+        actions: [{ label: 'Ver progresso', href: '#/progresso' }],
+      });
+    }
+  }
+
+  /* ----- Metas: paradas, sem próximo passo, fora do ritmo ----- */
+  const idle = []; const noStep = []; const stalled = [];
+  for (const g of goals) {
     const last = lastMovementAt(g);
     const hasOpenTask = tasksForGoal(g.id).some(isOpen);
-    return !hasOpenTask && (!last || now - last > 30 * DAY);
+    const age = (now - g.createdAt) / DAY;
+    const since = last ? daysSince(last) : Math.floor(age);
+    if (age >= 14 && !hasOpenTask && since > 30) idle.push({ g, since });
+    else if (!hasOpenTask && age >= 2) noStep.push(g);
+    if (age >= 21 && since >= 21 && hasOpenTask) stalled.push({ g, since });
+  }
+  if (idle.length) {
+    push(list, {
+      key: `idleGoals:${S.scope}`, category: 'direcao', label: 'Metas paradas', severity: idle.length >= 2 ? 2 : 1, magnitude: mag(idle.length * 15 + Math.max(...idle.map((x) => x.since)) / 3), signature: idle.length,
+      title: idle.length === 1 ? `“${idle[0].g.title}” não tem tarefas nem progresso há ${idle[0].since} dias.` : `${cap1(numF(idle.length))} das suas ${goals.length} metas ativas estão paradas.`,
+      line: 'Sem tarefas abertas e sem progresso registrado nos últimos 30 dias.',
+      goalItems: idle.map((x) => x.g.id),
+      facts: [{ v: idle.length, l: idle.length === 1 ? 'meta parada' : 'metas paradas' }, { v: goals.length, l: 'ativas' }], period: 'Últimos 30 dias.',
+      how: idle.map((x) => `“${x.g.title}”: sem movimento há ${x.since} dias e sem tarefas abertas.`),
+      meaning: 'Uma meta sem próximo passo tende a ficar só na intenção. Defina uma ação pequena — ou arquive, se deixou de importar.',
+      actions: idle.length === 1
+        ? [{ label: 'Definir próximo passo', type: 'newNextStep', id: idle[0].g.id, primary: true }, { label: 'Registrar progresso', type: 'logProgress', id: idle[0].g.id }]
+        : [{ label: 'Revisar metas', href: '#/metas?f=paradas', primary: true }],
+    });
+  }
+  if (noStep.length) {
+    push(list, {
+      key: `noNextStep:${S.scope}`, category: 'direcao', label: 'Próximo passo', severity: noStep.length >= 2 ? 2 : 1, magnitude: mag(noStep.length * 12), signature: noStep.length,
+      title: noStep.length === 1 ? `“${noStep[0].title}” não tem próximo passo.` : `${cap1(numF(noStep.length))} metas ativas não têm nenhuma tarefa relacionada.`,
+      line: 'Uma tarefa concreta é o que transforma a meta em ação.',
+      goalItems: noStep.map((g) => g.id),
+      facts: [{ v: noStep.length, l: noStep.length === 1 ? 'meta sem tarefa' : 'metas sem tarefa' }], period: 'Situação de hoje.',
+      how: noStep.map((g) => `“${g.title}”: nenhuma tarefa aberta ligada a ela.`),
+      meaning: 'O próximo passo aparece junto da meta e na tela inicial, para não ser esquecido.',
+      actions: noStep.length === 1 ? [{ label: 'Definir próximo passo', type: 'newNextStep', id: noStep[0].id, primary: true }] : [{ label: 'Ver metas', href: '#/metas?f=sem-passo', primary: true }],
+    });
+  }
+  stalled.sort((a, b) => b.since - a.since).slice(0, 2).forEach(({ g, since }) => {
+    push(list, {
+      key: `stalled:${g.id}`, category: 'direcao', label: 'Metas', severity: since >= 30 ? 2 : 1, magnitude: mag(since), signature: Math.floor(since / 7),
+      title: `“${g.title}” não registra progresso há ${since} dias.`,
+      line: 'Ela tem tarefas abertas, mas nenhum avanço registrado recentemente.',
+      facts: [{ v: `${since} dias`, l: 'sem progresso' }, { v: formatPercent(progressOf(g).ratio), l: 'concluído' }], period: 'Desde o último registro.',
+      how: [`Último registro de progresso ou etapa: há ${since} dias.`, `Progresso atual: ${formatPercent(progressOf(g).ratio)}.`],
+      meaning: 'Se você avançou e não registrou, atualize o valor. Se não avançou, talvez o próximo passo precise ser menor.',
+      actions: [{ label: 'Registrar progresso', type: 'logProgress', id: g.id, primary: true }, { label: 'Revisar meta', href: `#/metas/${g.id}` }],
+    });
   });
-  if (idleGoals.length) {
-    push(list, {
-      key: 'idleGoals', category: 'direcao', severity: idleGoals.length >= 2 ? 2 : 1, signature: idleGoals.length,
-      title: idleGoals.length === 1
-        ? `“${idleGoals[0].title}” não tem tarefas nem progresso registrado nos últimos 30 dias.`
-        : `${capitalizeFirst(numF(idleGoals.length))} das suas ${goals.length} metas ativas não possuem tarefas ou progresso registrado nos últimos 30 dias.`,
-      body: 'Uma meta sem próximo passo tende a ficar só na intenção. Defina uma ação pequena — ou arquive, se ela deixou de importar.',
-      goalItems: idleGoals.map((g) => g.id),
-      facts: [{ v: idleGoals.length, l: idleGoals.length === 1 ? 'meta parada' : 'metas paradas' }, { v: goals.length, l: 'ativas' }],
-      how: idleGoals.map((g) => { const l = lastMovementAt(g); return `“${g.title}”: ${l ? `último movimento há ${daysSince(l)} dias` : 'nenhum movimento registrado'}, sem tarefas abertas.`; }),
-      actions: idleGoals.length === 1 ? [{ label: 'Definir próximo passo', href: `#/metas/${idleGoals[0].id}`, primary: true }] : [{ label: 'Revisar metas', href: '#/metas?f=paradas', primary: true }],
-    });
-  }
-  const linkedDone = state.events.filter((e) => e.type === 'task.completed' && e.createdAt >= now - 30 * DAY);
-  const distinct = new Map(linkedDone.map((e) => [e.entityId, e]));
-  const withGoal = [...distinct.values()].filter((e) => e.metadata?.goalId).length;
-  if (goals.length >= 1 && distinct.size >= 10 && withGoal / distinct.size < 0.15) {
-    push(list, {
-      key: 'direction', category: 'direcao', severity: 1, signature: Math.round((withGoal / distinct.size) * 10),
-      title: `Nos últimos 30 dias, ${withGoal} de ${distinct.size} tarefas concluídas estavam ligadas a metas.`,
-      body: 'Não é um problema em si — muita coisa do dia a dia não faz parte de uma meta. Mas, se suas metas estão paradas, vale transformar uma delas em um próximo passo.',
-      facts: [{ v: `${withGoal} de ${distinct.size}`, l: 'ligadas a metas' }],
-      how: [`Tarefas concluídas em 30 dias: ${distinct.size}.`, `Ligadas a alguma meta: ${withGoal}.`],
-      actions: [{ label: 'Ver metas', href: '#/metas' }],
-    });
-  }
-
-  /* ----- Ritmo ----- */
   for (const g of goals) {
     const pace = paceOf(g, now);
     if (!pace) continue;
     if (pace.datePassed) {
       push(list, {
-        key: `goaldate:${g.id}`, category: 'ritmo', severity: 2, signature: g.targetDate,
-        title: `A data da meta “${g.title}” já passou.`,
-        body: `Ela está em ${formatPercent(progressOf(g).ratio)}. Você pode escolher um novo prazo ou seguir sem data.`,
-        facts: [{ v: formatPercent(progressOf(g).ratio), l: 'concluído' }, { v: `${-pace.daysLeft} dias`, l: 'após a data' }],
+        key: `goaldate:${g.id}`, category: 'ritmo', label: 'Ritmo', severity: 2, magnitude: mag(-pace.daysLeft), signature: g.targetDate,
+        title: `A data da meta “${g.title}” já passou.`, line: `Ela está em ${formatPercent(progressOf(g).ratio)}.`,
+        facts: [{ v: formatPercent(progressOf(g).ratio), l: 'concluído' }, { v: `${-pace.daysLeft} dias`, l: 'após a data' }], period: 'Situação de hoje.',
         how: [`Data escolhida: ${formatDay(g.targetDate, { withYear: true })}.`, `Progresso atual: ${formatPercent(progressOf(g).ratio)}.`],
+        meaning: 'Escolher um novo prazo realista mantém a projeção útil.',
         actions: [{ label: 'Ver planejamento', href: `#/metas/${g.id}?ver=plano`, primary: true }],
       });
     } else if (pace.offPace) {
-      const money = g.type === 'money';
+      const ratio = pace.recent.perDay / pace.neededPerDay;
       push(list, {
-        key: `offpace:${g.id}`, category: 'ritmo', severity: 2, signature: Math.round((pace.recent.perDay / pace.neededPerDay) * 10),
+        key: `offpace:${g.id}`, category: 'ritmo', label: 'Ritmo', severity: 2, magnitude: mag((1 - ratio) * 80), signature: Math.round(ratio * 10),
         title: `“${g.title}” está abaixo do ritmo necessário.`,
-        body: `Para chegar lá até ${formatMonthYear(g.targetDate)}, ${money ? 'seria preciso guardar' : 'seria preciso avançar'} cerca de ${rateText(g, pace.neededPerDay)}. Sua média recente está em ${rateText(g, pace.recent.perDay)}.`,
-        facts: [{ v: rateText(g, pace.neededPerDay), l: 'necessário' }, { v: rateText(g, pace.recent.perDay), l: 'média recente' }],
-        how: [`Faltam ${formatGoalValue(g, pace.remaining)} em ${pace.daysLeft} dias (até ${formatDay(g.targetDate, { withYear: true })}).`, 'Ritmo necessário = quanto falta ÷ tempo restante.', `Média recente = avanços dos últimos ${pace.recent.windowDays} dias (correções não entram).`],
+        line: `Necessário: ${rateText(g, pace.neededPerDay)} · média recente: ${rateText(g, pace.recent.perDay)}.`,
+        facts: [{ v: rateText(g, pace.neededPerDay), l: 'necessário' }, { v: rateText(g, pace.recent.perDay), l: 'média recente' }], period: `Média dos últimos ${pace.recent.windowDays} dias.`,
+        how: [`Faltam ${formatGoalValue(g, pace.remaining)} em ${pace.daysLeft} dias (até ${formatDay(g.targetDate, { withYear: true })}).`, 'Ritmo necessário = quanto falta ÷ tempo restante.', `Média recente = avanços registrados nos últimos ${pace.recent.windowDays} dias (correções não entram).`],
+        meaning: `Mantendo o ritmo atual, a data de ${formatMonthYear(g.targetDate)} fica apertada. Dá para ajustar o prazo ou o valor por período.`,
         actions: [{ label: 'Ver projeção', href: `#/metas/${g.id}?ver=plano`, primary: true }],
       });
     }
   }
-  const recentMilestones = state.events.filter((e) => e.type === 'goal.milestone' && e.createdAt >= now - 3 * DAY && e.metadata.pct < 100);
-  const latestByGoal = new Map();
-  for (const e of recentMilestones) latestByGoal.set(e.entityId, e);
-  for (const e of latestByGoal.values()) {
-    if (!state.goals.has(e.entityId)) continue;
+  const recentMilestones = state.events.filter((e) => e.type === 'goal.milestone' && e.createdAt >= now - 3 * DAY && e.metadata.pct < 100 && goals.some((g) => g.id === e.entityId));
+  const latest = new Map(); for (const e of recentMilestones) latest.set(e.entityId, e);
+  for (const e of latest.values()) {
     push(list, {
-      key: `milestone:${e.entityId}:${e.metadata.pct}`, category: 'ritmo', severity: 1, positive: true, signature: 1,
-      title: `“${e.label}” chegou a ${e.metadata.pct}%.`, body: MILESTONE_TEXT[e.metadata.pct],
+      key: `milestone:${e.entityId}:${e.metadata.pct}`, category: 'ritmo', label: 'Marco', severity: 1, positive: true, magnitude: 0, signature: 1,
+      title: `“${e.label}” chegou a ${e.metadata.pct}%.`, line: MILESTONE_TEXT[e.metadata.pct],
+      facts: [{ v: `${e.metadata.pct}%`, l: 'atingido' }], period: 'Últimos 3 dias.',
+      how: [`Marco registrado em ${formatDay(dayKey(e.createdAt))}.`], meaning: 'Um registro do avanço, sem outra ação necessária.',
       actions: [{ label: 'Ver meta', href: `#/metas/${e.entityId}` }],
     });
   }
 
-  /* ----- Equilíbrio ----- */
-  if (appAgeDays >= 14) {
+  /* ----- Tarefas sem meta: só quando há motivo real ----- */
+  if (S.global && goals.length && noStep.length + idle.length > 0) {
+    const unlinked = open.filter((t) => !t.goalId);
+    if (unlinked.length >= 10 && unlinked.length / open.length >= 0.7) {
+      push(list, {
+        key: 'unlinked', category: 'direcao', label: 'Metas e tarefas', severity: 1, magnitude: mag(unlinked.length), signature: Math.floor(unlinked.length / 5),
+        title: `${unlinked.length} tarefas abertas não estão ligadas a nenhuma meta.`,
+        line: 'Isso não é necessariamente ruim — mas algumas metas estão sem tarefas.',
+        facts: [{ v: unlinked.length, l: 'sem meta' }, { v: open.length, l: 'abertas' }], period: 'Situação de hoje.',
+        how: [`Tarefas abertas: ${open.length}.`, `Sem meta relacionada: ${unlinked.length}.`, `Metas sem tarefa aberta: ${noStep.length + idle.length}.`],
+        meaning: 'Muitas tarefas existem só para resolver o dia a dia. O sinal aqui é outro: há metas sem ação, e talvez alguma dessas tarefas faça parte delas.',
+        actions: [{ label: 'Ver metas', href: '#/metas', primary: true }],
+      });
+    }
+  }
+
+  /* ----- Áreas esquecidas ----- */
+  if ((S.global || S.scope === 'area') && appAgeDays >= 14) {
     const last = lastActivityByArea();
+    const allGoals = activeGoals();
+    const all = openTasks();
+    const areas = S.scope === 'area' ? listAreas().filter((a) => a.id === sel.areaId) : listAreas();
     const neglected = [];
-    for (const area of listAreas()) {
-      const tasksIn = open.filter((t) => t.areaId === area.id).length;
-      const goalsIn = goals.filter((g) => g.areaId === area.id).length;
+    for (const area of areas) {
+      const tasksIn = all.filter((t) => t.areaId === area.id).length;
+      const goalsIn = allGoals.filter((g) => g.areaId === area.id).length;
       if (!tasksIn && !goalsIn) continue;
       const ts = last.get(area.id);
       const days = ts ? daysSince(ts) : Math.floor(appAgeDays);
@@ -242,31 +309,33 @@ export function computeInsights(now = Date.now()) {
     neglected.sort((a, b) => b.days - a.days).slice(0, 2).forEach(({ area, days, tasksIn, goalsIn }) => {
       const parts = [tasksIn && plural(tasksIn, 'tarefa aberta', 'tarefas abertas'), goalsIn && plural(goalsIn, 'meta ativa', 'metas ativas')].filter(Boolean);
       push(list, {
-        key: `neglected:${area.id}`, category: 'equilibrio', severity: days >= 30 ? 2 : 1, signature: Math.floor(days / 7),
-        title: `${area.name} não registra atividade há ${days} dias.`,
-        body: `Existem ${parts.join(' e ')} nessa área.`,
-        facts: [{ v: `${days} dias`, l: 'sem atividade' }],
+        key: `neglected:${area.id}`, category: 'equilibrio', label: 'Áreas', severity: days >= 30 ? 2 : 1, magnitude: mag(days), signature: Math.floor(days / 7),
+        title: `${area.name} não registra atividade há ${days} dias.`, line: `Existem ${parts.join(' e ')} nessa área.`,
+        facts: [{ v: `${days} dias`, l: 'sem atividade' }], period: 'Desde o último registro na área.',
         how: ['Atividade = criar, começar ou concluir tarefas e registrar progresso em metas da área.', `Último registro: há ${days} dias.`],
+        meaning: 'Pode ser uma escolha consciente. Se não for, uma tarefa pequena já retoma a área.',
         actions: [{ label: 'Ver área', href: `#/area/${area.id}`, primary: true }],
       });
     });
   }
 
-  /* ----- Cuidados ----- */
-  const lastExport = state.settings.lastExportAt;
-  if (appAgeDays >= 14 && state.tasks.size + state.goals.size >= 5 && (!lastExport || now - lastExport > 30 * DAY)) {
-    push(list, {
-      key: 'backup', category: 'cuidados', severity: 1, signature: lastExport ? 1 : 0,
-      title: lastExport ? 'Seu último backup tem mais de 30 dias.' : 'Você ainda não fez um backup.',
-      body: 'Seus dados ficam só neste navegador. Um arquivo de backup protege contra limpeza de dados ou troca de aparelho.',
-      actions: [{ label: 'Exportar backup', type: 'export', primary: true }],
-    });
+  /* ----- Backup ----- */
+  if (S.global) {
+    const lastExport = state.settings.lastExportAt;
+    if (appAgeDays >= 14 && state.tasks.size + state.goals.size >= 5 && (!lastExport || now - lastExport > 30 * DAY)) {
+      push(list, {
+        key: 'backup', category: 'cuidados', label: 'Backup', severity: 1, magnitude: 0, signature: lastExport ? 1 : 0,
+        title: lastExport ? 'Seu último backup tem mais de 30 dias.' : 'Você ainda não fez um backup.',
+        line: 'Seus dados ficam só neste navegador.',
+        facts: [], period: 'Situação de hoje.', how: [lastExport ? `Último backup: há ${daysSince(lastExport)} dias.` : 'Nenhum backup exportado ainda.'],
+        meaning: 'Um arquivo de backup protege contra limpeza de dados do navegador ou troca de aparelho.',
+        actions: [{ label: 'Exportar backup', type: 'export', primary: true }],
+      });
+    }
   }
 
   return finalizeList(list, now);
 }
-
-function capitalizeFirst(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 
 function finalizeList(list, now) {
   const seen = new Set();
@@ -277,7 +346,7 @@ function finalizeList(list, now) {
       const s = insightState[i.key];
       return { ...i, suppressed: !!s && s.signature === i.signature && now - s.dismissedAt < COOLDOWN[i.severity] };
     })
-    .sort((a, b) => b.severity - a.severity);
+    .sort((a, b) => b.priority - a.priority);
 }
 
 export function dismissInsight(ins) {
@@ -290,5 +359,31 @@ export function dismissInsight(ins) {
 
 /** Tela inicial: no máximo `limit` insights que pedem ação. */
 export function homeInsights(limit = 2, excludeKeys = []) {
-  return computeInsights().filter((i) => !i.suppressed && i.group !== 'momentum' && i.category !== 'cuidados' && !excludeKeys.includes(i.key)).slice(0, limit);
+  return computeInsights({ scope: 'tudo' }).filter((i) => !i.suppressed && i.group !== 'momentum' && i.category !== 'cuidados' && !i.positive && !excludeKeys.some((k) => i.key.startsWith(k))).slice(0, limit);
 }
+
+/**
+ * "O que vale fazer agora": no máximo 2 ações, derivadas dos insights mais relevantes.
+ * Frases factuais, sem cobrança.
+ */
+export function nextActions(insights, limit = 2) {
+  const out = [];
+  for (const i of insights) {
+    if (out.length >= limit) break;
+    if (i.suppressed || i.positive || !i.actions?.length) continue;
+    const a = i.actions.find((x) => x.primary) || i.actions[0];
+    let text;
+    if (i.key.startsWith('overdue')) text = i.items.length === 1 ? 'Decidir o que fazer com a tarefa atrasada é provavelmente o melhor ponto de partida.' : `Revisar as ${i.items.length} tarefas atrasadas é provavelmente o melhor ponto de partida.`;
+    else if (i.key.startsWith('stuck')) text = `${i.title.replace(/\.$/, '')}. Vale decidir o que fazer com ela.`;
+    else if (i.key.startsWith('offpace') || i.key.startsWith('goaldate')) text = `${i.title} Veja o planejamento para ajustar prazo ou ritmo.`;
+    else if (i.key.startsWith('stalled')) text = i.title;
+    else if (i.key.startsWith('noNextStep') || i.key.startsWith('idleGoals')) text = i.title;
+    else if (i.key.startsWith('accumulation') || i.key.startsWith('backlog')) text = `${i.title} Uma revisão rápida ajuda a manter só o que importa.`;
+    else if (i.key === 'capacity') text = 'O plano desta semana está acima do seu ritmo recente. Revisar agora evita frustração no fim da semana.';
+    else if (i.key === 'inbox') text = i.title;
+    else continue;
+    out.push({ text, action: a, key: i.key });
+  }
+  return out;
+}
+

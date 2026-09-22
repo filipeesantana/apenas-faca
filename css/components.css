@@ -290,32 +290,6 @@ a.area-tag:hover { color: var(--ink); text-decoration: underline; text-underline
 .timeline li.is-mark .timeline__text { font-weight: 600; }
 .timeline__time { color: var(--ink-3); font-size: 12.5px; white-space: nowrap; }
 
-/* ---------- Insights ---------- */
-.insight {
-  --tone: var(--ink-3); --tone-soft: var(--sunken);
-  position: relative; display: grid; gap: 8px; align-content: start;
-  padding: 16px 18px 18px; border-radius: var(--r-lg);
-  background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-1);
-  border-left: 3px solid var(--tone);
-}
-.insight--attention { --tone: var(--danger); --tone-soft: var(--danger-soft); }
-.insight--watch { --tone: var(--warn); --tone-soft: var(--warn-soft); }
-.insight--good { --tone: var(--ok); --tone-soft: var(--ok-soft); }
-.insight__head { display: flex; justify-content: space-between; align-items: center; margin: -6px -8px -2px 0; }
-.insight__tone { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--tone); }
-.insight--info .insight__tone { color: var(--ink-3); }
-.insight__title { font-size: 16.5px; font-weight: 600; line-height: 1.35; }
-.insight__body { color: var(--ink-2); font-size: 15px; }
-.insight__toggle { justify-self: start; display: inline-flex; align-items: center; gap: 4px; font-size: 13.5px; font-weight: 550; color: var(--accent-text); padding: 4px 0; }
-.insight__toggle:hover { text-decoration: underline; text-underline-offset: 3px; }
-.insight__items { border-top: 1px solid var(--line); margin-top: 4px; }
-.insight__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
-.insight--compact { padding: 14px 16px 16px; }
-.insight--compact .insight__title { font-size: 15px; }
-.insight-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
-.insight-grid.is-dim { opacity: .7; margin-top: 12px; }
-.insight-stack { display: grid; gap: 10px; }
-.hidden-insights { margin-top: 12px; }
 
 /* ---------- Gráficos ---------- */
 .cchart, .pchart, .linechart { margin: 0; }
@@ -365,7 +339,6 @@ a.hbars__label:hover { color: var(--ink); text-decoration: underline; text-under
   .toasts { right: 16px; left: 16px; width: auto; bottom: calc(var(--tabbar-h) + 12px + env(safe-area-inset-bottom)); }
   .options--grid { grid-template-columns: 1fr; }
   .options--grid .option { flex-direction: row; align-items: center; }
-  .insight-grid { grid-template-columns: 1fr; }
   .card.section { padding: 16px; }
   .question { font-size: 20px; margin-top: 18px; }
 }
@@ -382,15 +355,6 @@ a.hbars__label:hover { color: var(--ink); text-decoration: underline; text-under
 
 /* Ajuda (?) — o botão tem 24px visíveis e 44px de área de toque */
 .label-help { display: inline-flex; align-items: center; gap: 6px; }
-.tip { display: inline-flex; vertical-align: middle; }
-.tip__btn {
-  width: 24px; height: 24px; border-radius: 50%; display: inline-grid; place-items: center; position: relative; flex: none;
-  border: 1px solid var(--line-strong); color: var(--ink-3); font-size: 13px; font-weight: 700; line-height: 1;
-  font-family: var(--font-sans); text-transform: none; letter-spacing: 0; background: var(--surface);
-  transition: border-color var(--motion-fast) var(--ease-in-out), color var(--motion-fast) var(--ease-in-out), background var(--motion-fast) var(--ease-in-out);
-}
-.tip__btn::after { content: ""; position: absolute; inset: -10px; }
-.tip__btn:hover, .tip__btn[aria-expanded="true"] { border-color: var(--accent); color: var(--accent-text); background: var(--accent-soft); }
 
 /* Popover (dicas, leituras de gráfico e menus) */
 .pop {
@@ -589,13 +553,8 @@ a.hbars__label:hover { color: var(--ink); text-decoration: underline; text-under
 details > :not(summary) { animation: fade-in var(--motion) var(--ease); }
 
 @media (max-width: 420px) {
-  .trend { table-layout: fixed; }
-  .trend th:first-child { width: 38%; }
-  .trend__delta { white-space: normal; }
   .segmented__btn { padding: 0 8px; font-size: 13.5px; }
   .segmented__count { margin-left: 4px; font-size: 12px; }
-  .trend { font-size: 13.5px; }
-  .trend th, .trend td { padding: 6px 3px; }
   .kv dd { font-size: 19px; }
   .scen__row { grid-template-columns: auto 1fr auto; }
   .scen__track { min-width: 30px; }
@@ -606,5 +565,50 @@ details > :not(summary) { animation: fade-in var(--motion) var(--ease); }
   .segmented__btn { flex: 1 1 auto; }
 }
 @media (max-width: 360px) {
-  .trend th:nth-child(3), .trend td:nth-child(3) { display: none; }
+}
+
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* ---------- Ajuda contextual (?) ----------
+   Botão: 24px visíveis, 44px de área de toque. Explicação: bloco no fluxo, logo abaixo do título/campo. */
+.help-trigger { display: inline-flex; vertical-align: middle; flex: none; }
+.help-trigger__btn {
+  width: 24px; height: 24px; border-radius: 50%; display: inline-grid; place-items: center; position: relative; flex: none;
+  border: 1px solid var(--line-strong); color: var(--ink-3); font-size: 13px; font-weight: 700; line-height: 1;
+  font-family: var(--font-sans); text-transform: none; letter-spacing: 0; background: var(--surface);
+  transition: border-color var(--motion-fast) var(--ease-in-out), color var(--motion-fast) var(--ease-in-out), background var(--motion-fast) var(--ease-in-out);
+}
+.help-trigger__btn::after { content: ""; position: absolute; inset: -10px; }
+.help-trigger__btn:hover, .help-trigger__btn[aria-expanded="true"] { border-color: var(--accent); color: var(--accent-text); background: var(--accent-soft); }
+.help-trigger__btn[aria-expanded="true"] { box-shadow: 0 0 0 3px var(--accent-soft); }
+
+.help-panel {
+  display: grid; grid-template-rows: 0fr; opacity: 0; transform: translateY(-4px);
+  transition: grid-template-rows var(--motion) var(--ease-in-out), opacity var(--motion) var(--ease), transform var(--motion) var(--ease), margin var(--motion) var(--ease-in-out);
+  margin: 0; text-transform: none; letter-spacing: normal; font-weight: 400; text-align: left; width: 100%;
+}
+.help-panel.is-open { grid-template-rows: 1fr; opacity: 1; transform: none; margin: 8px 0 12px; }
+.help-panel__inner { overflow: hidden; min-height: 0; }
+.help-panel__inner > * { margin-left: 14px; margin-right: 8px; }
+.help-panel__inner {
+  border-left: 3px solid var(--accent); border-radius: var(--r-sm); background: var(--accent-soft);
+  color: var(--ink); font-size: 15px; line-height: 1.5;
+}
+.help-panel__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
+.help-panel__title { display: inline-flex; align-items: center; gap: 6px; font-weight: 650; font-size: 14.5px; color: var(--accent-text); }
+.help-panel__close { width: 36px; height: 36px; display: grid; place-items: center; border-radius: var(--r-sm); color: var(--ink-3); flex: none; margin-right: -4px; }
+.help-panel__close:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--ink); }
+.help-panel__text { color: var(--ink-2); max-width: 60em; }
+.help-panel__example { color: var(--ink-2); font-size: 14.5px; margin-top: 6px; }
+.help-panel__inner > :last-child { margin-bottom: 12px; }
+.pop--tip { max-width: 260px; }
+.label-help[data-help-slot] { flex-wrap: wrap; }
+.page-head__text .label-help { align-items: center; }
+
+/* Interruptor com ajuda ao lado (campo "Próximo passo") */
+.switch-field { display: grid; }
+.switch-field__row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+@media (prefers-reduced-motion: reduce) {
+  .help-panel { transform: none; transition: opacity var(--motion) linear; }
 }

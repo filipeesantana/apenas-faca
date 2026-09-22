@@ -34,7 +34,9 @@ const TOPICS = [
   ['Como funcionam as análises?', [
     'O Norte guarda um histórico do que acontece (tarefas criadas, concluídas, adiadas; progresso das metas).',
     'Com regras simples e fixas, ele encontra padrões: acúmulo, adiamentos repetidos, metas paradas, áreas esquecidas, metas fora do ritmo.',
-    'Cada análise tem “Como chegamos a isso?”, com os números usados. Nada é enviado para a internet.',
+    'Na tela Análises, escolha o que analisar (tudo, uma área, uma meta ou as tarefas), o período e como ver: Essencial, Detalhado ou Comparar.',
+    'Cada ponto de atenção tem “Entender análise”, com os dados usados, o período e o cálculo. Nada é enviado para a internet.',
+    'Para uma revisão rápida, use “Revisar minha semana”: cinco passos curtos sobre o que foi feito, o que ficou pendente e o que merece atenção.',
   ]],
   ['Como funcionam as projeções?', [
     'Ritmo necessário = quanto falta ÷ tempo até o prazo. Ex.: faltam R$ 31.500 em 24 meses → R$ 1.312,50 por mês.',
