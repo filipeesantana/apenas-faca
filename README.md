@@ -27,7 +27,9 @@ Funciona no navegador do computador, tablet ou celular. Não há cadastro, login
 | **Início** | Um painel do dia: a ação mais importante agora (e o porquê), o que vence hoje, o que cabe em 30 minutos, como estão suas metas e o que merece atenção. |
 | **Tarefas** | Criação com apenas o nome. Prazo em linguagem humana (“amanhã”, “faltam 4 dias”), importância, duração, área e ligação com metas. Ações rápidas em cada linha e filtros com contagem. |
 | **Metas** | Quatro formas de acompanhar: **valor** (ex.: juntar R$ 40.000), **quantidade** (40 aulas), **tempo** (60 horas de estudo) e **etapas**. Cada meta reúne progresso, próximo passo, histórico e projeção numa só tela. |
-| **Planejamento** | “Como posso chegar lá?”: o ritmo necessário para cada prazo (6, 12, 24 meses…), comparação entre cenários e quanto tempo levaria mantendo um ritmo escolhido. |
+| **Planejamento** | “Como posso chegar lá?”: o ritmo necessário para cada prazo (3, 6, 12, 24, 48 meses…), comparação entre prazos e quanto tempo levaria mantendo um ritmo escolhido. |
+| **Planejamento financeiro** | Opcional e contextual: aparece quando uma meta envolve dinheiro. **Simular caminho** é um laboratório de cenários — quanto por mês, em quanto tempo, comparação entre caminhos, aporte extra, retirada pontual e percentual da renda, tudo atualizando na hora. Simulação nunca altera dados; só “usar como plano” guarda uma decisão. |
+| **Finanças** | Depois de ativada: “meu mês” (entrou, saiu, destinado a metas, disponível), distribuição por natureza ou categoria, metas com plano e o previsto de cada mês. Sem estética de banco e sem julgar gastos. |
 | **Progresso** | O que aconteceu em 7 dias, 30 dias, no mês ou num período à sua escolha — incluindo **planejado × realizado** por semana e sua capacidade média recente. |
 | **Análises** | Em três escolhas — o que analisar (tudo, uma área, uma meta ou as tarefas), o período e o jeito de ver (Essencial, Detalhado ou Comparar) — o Norte mostra um resumo em frases simples, um gráfico que responde a uma pergunta, o que merece atenção e no máximo duas ações para agora. Cada ponto traz “Entender análise”, com os dados usados e o cálculo. Inclui “Revisar minha semana”, em cinco passos. |
 | **Revisão guiada** | “Revisar meu plano”: uma pendência por vez — fazer agora, escolher nova data, manter sem prazo, concluir ou cancelar. Feita para quem acumulou muita coisa. |
@@ -66,11 +68,13 @@ js/
   app.js            inicialização e navegação entre telas
   core/             banco local (IndexedDB), estado em memória, eventos e rotas
   domain/           regras do produto: tarefas, metas, prioridade, planejamento,
-                    pontos de atenção e estatísticas — sem interface
+                    dinheiro, planos, simulador de cenários, pontos de atenção
+                    e estatísticas — sem interface
   analysis/         cálculo das análises: períodos, resumo, séries e comparação
   content/          microtextos contextuais
   ui/               componentes visuais reutilizáveis (dicas, menus, gráficos, painéis)
   features/         telas e fluxos (Início, Tarefas, Metas, Progresso, Análises…)
+    finance/        camada financeira: Finanças, movimentações, simulador de caminhos
   data/             backup e dados de demonstração
   utils/            datas, números e utilitários
 ```
@@ -84,11 +88,13 @@ Sem frameworks, sem bibliotecas externas e sem etapa de build. A interface foi p
 
 ## Armazenamento e privacidade
 
-Todos os dados ficam **somente no seu navegador**, no aparelho que você está usando. Não existe servidor, conta ou envio de informações para a internet — nem o autor do projeto tem acesso aos seus dados.
+Todos os dados ficam **somente no seu navegador**, no aparelho que você está usando — inclusive os dados financeiros. Não existe servidor, conta, banco conectado ou envio de informações para a internet: nem o autor do projeto tem acesso aos seus dados.
+
+Como agora pode haver informações financeiras pessoais guardadas aqui, vale reforçar: limpar os dados do site no navegador apaga tudo. O backup é a forma de levar essas informações para outro aparelho.
 
 ## Backup
 
-Em **Ajustes**, você pode **exportar** um arquivo com tudo (tarefas, metas, anotações e histórico) e **restaurá-lo** depois — por exemplo, ao trocar de aparelho. O Norte confere o arquivo e pede confirmação antes de substituir os dados atuais, e lembra você de fazer backup periodicamente. Backups de versões anteriores continuam compatíveis.
+Em **Ajustes**, você pode **exportar** um arquivo com tudo (tarefas, metas, anotações, histórico, movimentações financeiras, planos e cenários) e **restaurá-lo** depois — por exemplo, ao trocar de aparelho. O Norte confere o arquivo e pede confirmação antes de substituir os dados atuais, e lembra você de fazer backup periodicamente. Backups de versões anteriores continuam compatíveis.
 
 ## Limitações
 
@@ -96,8 +102,14 @@ Em **Ajustes**, você pode **exportar** um arquivo com tudo (tarefas, metas, ano
 - Limpar os dados do site no navegador apaga as informações do Norte. Janelas anônimas podem não guardar nada.
 - Não há funcionamento offline garantido, lembretes, notificações ou tarefas recorrentes.
 - Prioridades e análises usam regras fixas e transparentes; não aprendem com o uso.
+- As simulações financeiras usam fluxo nominal simples: não consideram juros, rendimentos nem inflação.
+- O Norte não se propõe a dar conselhos financeiros. Ele organiza, calcula e compara; as decisões são suas.
 
 ---
+
+## Licença
+
+MIT — veja o arquivo `LICENSE`.
 
 ## Desenvolvedor
 

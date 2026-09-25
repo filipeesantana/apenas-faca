@@ -12,7 +12,7 @@
  */
 import { state, commit } from '../core/store.js';
 import { DAY, today, formatDay, formatMonthYear, daysSince, diffDays, dayKey } from '../utils/dates.js';
-import { plural, timesText, formatPercent } from '../utils/numbers.js';
+import { plural, timesText, formatPercent, formatMoney } from '../utils/numbers.js';
 import { openTasks, isOverdue, tasksForGoal, isOpen } from './tasks.js';
 import { activeGoals, paceOf, progressOf, lastMovementAt, MILESTONE_TEXT, formatGoalValue } from './goals.js';
 import { rateText } from './planning.js';
@@ -20,10 +20,13 @@ import { openInboxItems } from './inbox.js';
 import { lastActivityByArea } from '../core/events.js';
 import { listAreas, getArea } from './areas.js';
 import { completedIds, countType, recentCapacity, thisWeekLoad } from './stats.js';
+import { financeEnabled, incomeMonthly, monthSummary, thisMonth, monthLabel, adjustableCategories, hasExpenses } from './money.js';
+import { plansStatus, plannedTotal } from './finance-plan.js';
 
 export const CATEGORIES = {
   execucao: { label: 'Execução' }, acumulo: { label: 'Acúmulo' }, consistencia: { label: 'Adiamentos' },
   direcao: { label: 'Metas' }, ritmo: { label: 'Ritmo' }, equilibrio: { label: 'Áreas' }, cuidados: { label: 'Backup' },
+  dinheiro: { label: 'Dinheiro' },
 };
 
 const COOLDOWN = { 3: 2 * DAY, 2: 4 * DAY, 1: 7 * DAY };
@@ -40,10 +43,10 @@ function push(list, ins) {
 /** Filtros por escopo — mesma semântica do motor de análise. */
 function scoped(sel = { scope: 'tudo' }) {
   const scope = sel.scope || 'tudo';
-  const taskOk = (t) => (scope === 'area' ? t.areaId === sel.areaId : scope === 'meta' ? t.goalId === sel.goalId : true);
-  const goalOk = (g) => (scope === 'tarefas' ? false : scope === 'area' ? g.areaId === sel.areaId : scope === 'meta' ? g.id === sel.goalId : true);
-  const eventOk = (e) => (scope === 'tarefas' ? e.entityType === 'task' : scope === 'area' ? e.areaId === sel.areaId : scope === 'meta' ? (e.entityId === sel.goalId || e.metadata?.goalId === sel.goalId) : true);
-  return { scope, taskOk, goalOk, eventOk, global: scope === 'tudo', taskish: scope === 'tudo' || scope === 'tarefas' };
+  const taskOk = (t) => (scope === 'dinheiro' ? false : scope === 'area' ? t.areaId === sel.areaId : scope === 'meta' ? t.goalId === sel.goalId : true);
+  const goalOk = (g) => (scope === 'tarefas' ? false : scope === 'dinheiro' ? g.type === 'money' : scope === 'area' ? g.areaId === sel.areaId : scope === 'meta' ? g.id === sel.goalId : true);
+  const eventOk = (e) => (scope === 'dinheiro' ? e.entityType === 'money' : scope === 'tarefas' ? e.entityType === 'task' : scope === 'area' ? e.areaId === sel.areaId : scope === 'meta' ? (e.entityId === sel.goalId || e.metadata?.goalId === sel.goalId) : true);
+  return { scope, taskOk, goalOk, eventOk, global: scope === 'tudo', money: scope === 'tudo' || scope === 'dinheiro', taskish: scope === 'tudo' || scope === 'tarefas' };
 }
 
 function scopedCounts(eventOk, from, to = Infinity) {
@@ -317,6 +320,91 @@ export function computeInsights(sel = { scope: 'tudo' }, now = Date.now()) {
         actions: [{ label: 'Ver área', href: `#/area/${area.id}`, primary: true }],
       });
     });
+  }
+
+  /* ----- Dinheiro (só com a camada financeira ativada) ----- */
+  if (S.money && financeEnabled()) {
+    // No máximo dois pontos de dinheiro por vez: o Norte sugere, não inunda a tela.
+    const fin = [];
+    const income = incomeMonthly();
+    const ms = monthSummary(thisMonth());
+    const plans = plansStatus();
+    const planned = plannedTotal();
+    const availableNow = income.has ? income.cents - ms.spent : null;
+
+    // O plano pede mais do que o disponível registrado.
+    if (planned > 0 && availableNow != null && planned > availableNow) {
+      const diff = planned - availableNow;
+      const goal = plans[0]?.goal;
+      push(fin, {
+        key: 'fin-plano-acima', category: 'dinheiro', label: 'Dinheiro', severity: 2, magnitude: mag(Math.min(99, diff / 1000)), signature: Math.round(diff / 10000),
+        title: `Seu plano para metas pede cerca de ${formatMoney(diff)} a mais por mês do que o valor disponível registrado.`,
+        line: `Planejado: ${formatMoney(planned)} · disponível em ${monthLabel(thisMonth())}: ${formatMoney(Math.max(0, availableNow))}.`,
+        facts: [{ v: formatMoney(planned), l: 'planejado para metas' }, { v: formatMoney(Math.max(0, availableNow)), l: 'disponível registrado' }],
+        period: `Mês de ${monthLabel(thisMonth())}.`,
+        how: [`Renda registrada: ${formatMoney(income.cents)}.`, `Saídas registradas no mês: ${formatMoney(ms.spent)}.`, `Disponível = renda − saídas = ${formatMoney(availableNow)}.`, `Planejado para metas: ${formatMoney(planned)}.`],
+        meaning: 'Isso não quer dizer que o plano está errado. Pode ser que falte registrar alguma entrada, ou que valha ajustar o valor mensal ou o prazo.',
+        actions: [
+          goal && { label: 'Simular caminhos', type: 'simulate', id: goal.id, primary: true },
+          { label: 'Ver finanças', href: '#/financas' },
+        ].filter(Boolean),
+        goalItems: goal ? [goal.id] : [],
+      });
+    }
+
+    // Contribuição abaixo do planejado no mês.
+    for (const p of plans) {
+      if (p.planned > 0 && p.missing > 0 && new Date(now).getDate() >= 15) {
+        push(fin, {
+          key: `fin-abaixo:${p.goal.id}`, category: 'dinheiro', label: 'Dinheiro', severity: p.done > 0 ? 1 : 2, magnitude: mag(Math.min(99, p.missing / 1000)), signature: Math.round(p.missing / 10000),
+          title: `A contribuição para “${p.goal.title}” está ${formatMoney(p.missing)} abaixo do planejado neste mês.`,
+          line: `Planejado: ${formatMoney(p.planned)} · registrado até agora: ${formatMoney(p.done)}.`,
+          facts: [{ v: formatMoney(p.planned), l: 'planejado no mês' }, { v: formatMoney(p.done), l: 'registrado' }],
+          period: `Mês de ${monthLabel(thisMonth())}.`,
+          how: [`Plano da meta: ${formatMoney(p.planned)} por mês.`, `Avanços registrados neste mês: ${formatMoney(p.done)}.`],
+          meaning: 'Pode ser só falta de registro. Se o valor não couber mais no mês, dá para simular outro caminho.',
+          actions: [
+            { label: 'Registrar aporte', type: 'logProgress', id: p.goal.id, primary: true },
+            { label: 'Rever caminhos', type: 'simulate', id: p.goal.id },
+          ],
+          goalItems: [p.goal.id],
+        });
+        break;
+      }
+    }
+
+    // Quanto da renda foi para metas (fato, sem julgamento).
+    if (income.has && ms.toGoals > 0) {
+      push(fin, {
+        key: 'fin-metas-renda', category: 'dinheiro', label: 'Dinheiro', severity: 1, magnitude: 5, positive: true, signature: Math.round((ms.toGoals / income.cents) * 100),
+        title: `${formatPercent(ms.toGoals / income.cents)} da renda registrada foi para metas em ${monthLabel(thisMonth())}.`,
+        line: `${formatMoney(ms.toGoals)} destinados a metas neste mês.`,
+        facts: [{ v: formatMoney(ms.toGoals), l: 'para metas' }, { v: formatMoney(income.cents), l: 'renda registrada' }],
+        period: `Mês de ${monthLabel(thisMonth())}.`,
+        how: [`Avanços positivos em metas de dinheiro no mês: ${formatMoney(ms.toGoals)}.`, `Renda de referência: ${formatMoney(income.cents)}.`],
+        meaning: 'É só perspectiva. Não existe um percentual “certo” — quem decide é você.',
+        actions: [{ label: 'Ver finanças', href: '#/financas', primary: true }],
+      });
+    }
+
+    // Margem de ajuste indicada pelo próprio usuário.
+    const adj = adjustableCategories();
+    const moneyGoal = goals.find((g) => g.type === 'money' && progressOf(g).remaining > 0);
+    if (adj.length && moneyGoal && hasExpenses()) {
+      const total = adj.reduce((a, c) => a + c.avgMonth, 0);
+      push(fin, {
+        key: 'fin-ajustaveis', category: 'dinheiro', label: 'Dinheiro', severity: 1, magnitude: 3, signature: adj.length,
+        title: `Você marcou ${formatMoney(total)} por mês em gastos com margem para ajuste.`,
+        line: 'Dá para simular uma redução e ver o efeito numa meta — nada muda de verdade.',
+        facts: adj.slice(0, 3).map((c) => ({ v: formatMoney(c.avgMonth), l: `média em ${c.categoryId}` })),
+        period: 'Média dos meses registrados.',
+        how: ['Somente categorias que você marcou com margem (pequena, moderada ou alta) entram nessa conta.', 'Gastos marcados como “não mexer” ficam de fora sempre.'],
+        meaning: 'O Norte não escolhe onde economizar. Ele só mostra o que você mesmo indicou como ajustável.',
+        actions: [{ label: 'Simular ajuste', type: 'simulate', id: moneyGoal.id, primary: true }],
+      });
+    }
+    fin.sort((a, b) => b.priority - a.priority);
+    for (const x of fin.slice(0, 2)) list.push(x);
   }
 
   /* ----- Backup ----- */

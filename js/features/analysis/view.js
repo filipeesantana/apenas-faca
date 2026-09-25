@@ -16,7 +16,7 @@ import { plural } from '../../utils/numbers.js';
 import { listAreas } from '../../domain/areas.js';
 import { allGoals } from '../../domain/goals.js';
 import { computeInsights, nextActions } from '../../domain/insights.js';
-import { SCOPES, normalizeSelection, scopeLabel, summary, sentence, compareSentence, hasDataFor, capacity, weekLoad } from '../../analysis/engine.js';
+import { SCOPES, availableScopes, normalizeSelection, scopeLabel, summary, sentence, compareSentence, hasDataFor, capacity, weekLoad } from '../../analysis/engine.js';
 import { PERIODS, resolvePeriod, previousPeriod, customCompare, granularities, defaultGranularity, GRAN_LABEL, firstDataDay } from '../../analysis/periods.js';
 import { renderViz, tabsFor, TIME_TABS, emptyViz } from './charts.js';
 import { insightList, nextActionsBlock } from './insights-ui.js';
@@ -215,7 +215,7 @@ function builder(sel) {
     goals.length
       ? [h('label', { class: 'field__label', for: goalSel.id }, 'Qual meta?'), goalSel]
       : h('p', { class: 'muted' }, 'Você ainda não criou metas. ', h('button', { type: 'button', class: 'link-btn', onClick: () => openGoalForm() }, 'Criar uma meta')));
-  const scopeOpts = Object.entries(SCOPES).map(([value, s]) => ({ value, label: s.label, desc: s.desc }));
+  const scopeOpts = availableScopes().map(([value, s]) => ({ value, label: s.label, desc: s.desc }));
   const scopeGroup = radioGroup(`${uniq}-scope`, scopeOpts, S.scope, (v) => {
     S.scope = v; S.tab = null;
     if (v === 'area' && !S.areaId) S.areaId = areaSel.value || null;

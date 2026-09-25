@@ -54,7 +54,8 @@ export function swap(container, ...nodes) {
       saved.end = active.selectionEnd;
     }
   }
-  container.replaceChildren(...nodes);
+  container.replaceChildren();
+  append(container, nodes);
   if (!saved) return;
   const el = container.querySelector(`[data-key="${CSS.escape(saved.key)}"]`);
   if (!el) return;

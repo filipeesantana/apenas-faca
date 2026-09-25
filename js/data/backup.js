@@ -3,7 +3,7 @@ import { state, commit, replaceAll } from '../core/store.js';
 import { DB_VERSION } from '../core/db.js';
 import { today, isValidISODate } from '../utils/dates.js';
 
-export const BACKUP_FORMAT = 2;
+export const BACKUP_FORMAT = 3;
 const APP_ID = 'norte';
 const LEGACY_IDS = ['apenas-faca']; // backups da primeira versão continuam aceitos
 
@@ -13,12 +13,19 @@ export function buildBackup() {
     format: BACKUP_FORMAT,
     schemaVersion: DB_VERSION,
     exportedAt: new Date().toISOString(),
-    counts: { tasks: state.tasks.size, goals: state.goals.size, areas: state.areas.size, inbox: state.inbox.size, events: state.events.length },
+    counts: {
+      tasks: state.tasks.size, goals: state.goals.size, areas: state.areas.size, inbox: state.inbox.size,
+      events: state.events.length, money: state.money.size, plans: state.plans.size,
+    },
     data: {
       tasks: [...state.tasks.values()],
       goals: [...state.goals.values()],
       areas: [...state.areas.values()],
       inbox: [...state.inbox.values()],
+      money: [...state.money.values()],
+      recurring: [...state.recurring.values()],
+      plans: [...state.plans.values()],
+      scenarios: [...state.scenarios.values()],
       events: state.events,
       settings: { ...state.settings },
     },
@@ -56,12 +63,30 @@ function normalizeGoal(g) {
     targetDate: isValidISODate(g.targetDate) ? g.targetDate : null };
 }
 
-/** Migração entre formatos. Formato 1 (Apenas, Faça.) → 2 (Norte): campos novos recebem padrões. */
+/**
+ * Migração entre formatos.
+ * 1 (Apenas, Faça.) → 2 (Norte): campos novos das tarefas recebem padrões.
+ * 2 → 3 (camada financeira): os depósitos novos entram vazios; nada é perdido.
+ */
 function migrate(obj) {
   if (obj.format === 1) {
     obj = { ...obj, format: 2, data: { ...obj.data, tasks: (obj.data?.tasks || []).map((t) => ({ estimateMin: null, nextStep: false, ...t })) } };
   }
+  if (obj.format === 2) {
+    obj = { ...obj, format: 3, data: { money: [], recurring: [], plans: [], scenarios: [], ...obj.data } };
+  }
   return obj;
+}
+
+const isCents = (v) => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 1e15;
+
+function normalizeMoney(t) {
+  return {
+    label: '', nature: null, flex: null, recurringId: null, note: '', updatedAt: t.createdAt, ...t,
+    amountCents: Math.round(t.amountCents),
+    date: isValidISODate(t.date) ? t.date : today(),
+    categoryId: t.categoryId || 'outro',
+  };
 }
 
 export function validateBackup(raw) {
@@ -74,6 +99,10 @@ export function validateBackup(raw) {
   for (const key of ['tasks', 'goals', 'areas', 'inbox', 'events']) {
     if (!Array.isArray(d[key])) return { ok: false, error: `O backup está incompleto (faltam “${key}”).` };
   }
+  for (const key of ['money', 'recurring', 'plans', 'scenarios']) {
+    if (d[key] != null && !Array.isArray(d[key])) return { ok: false, error: `O backup tem um formato inesperado em “${key}”.` };
+    d[key] = d[key] || [];
+  }
   const bad = (list, test) => list.findIndex((r) => !isObj(r) || !test(r));
   const checks = [
     ['tarefas', d.tasks, (t) => isStr(t.id) && typeof t.title === 'string' && ['pending', 'doing', 'done', 'dropped'].includes(t.status) && isNum(t.createdAt)],
@@ -81,6 +110,10 @@ export function validateBackup(raw) {
     ['áreas', d.areas, (a) => isStr(a.id) && isStr(a.name)],
     ['anotações', d.inbox, (i) => isStr(i.id) && typeof i.text === 'string' && isNum(i.createdAt)],
     ['histórico', d.events, (e) => isStr(e.id) && isStr(e.type) && isNum(e.createdAt)],
+    ['movimentações', d.money, (t) => isStr(t.id) && ['in', 'out'].includes(t.kind) && isCents(t.amountCents)],
+    ['recorrências', d.recurring, (r) => isStr(r.id) && ['in', 'out'].includes(r.kind) && isCents(r.amountCents)],
+    ['planos', d.plans, (p) => isStr(p.id) && isStr(p.goalId)],
+    ['cenários', d.scenarios, (c) => isStr(c.id) && isStr(c.goalId)],
   ];
   for (const [label, list, test] of checks) {
     const i = bad(list, test);
@@ -89,12 +122,19 @@ export function validateBackup(raw) {
   return {
     ok: true,
     exportedAt: obj.exportedAt,
-    counts: { tasks: d.tasks.length, goals: d.goals.length, areas: d.areas.length, inbox: d.inbox.length, events: d.events.length },
+    counts: {
+      tasks: d.tasks.length, goals: d.goals.length, areas: d.areas.length, inbox: d.inbox.length,
+      events: d.events.length, money: d.money.length, plans: d.plans.length,
+    },
     data: {
       tasks: d.tasks.map(normalizeTask),
       goals: d.goals.map(normalizeGoal),
       areas: d.areas.map((a, i) => ({ color: 'slate', order: i, createdAt: Date.now(), ...a })),
       inbox: d.inbox.map((i) => ({ status: 'open', updatedAt: i.createdAt, ...i })),
+      money: d.money.map(normalizeMoney),
+      recurring: d.recurring.map((r) => ({ label: '', freq: 'month', variable: false, active: true, categoryId: 'outro', nature: null, flex: null, updatedAt: r.createdAt || Date.now(), createdAt: Date.now(), ...r })),
+      plans: d.plans.map((p) => ({ mode: 'fixed', amountCents: 0, percent: 0, months: null, status: 'active', note: '', source: 'backup', createdAt: Date.now(), updatedAt: Date.now(), ...p })),
+      scenarios: d.scenarios.map((c) => ({ name: 'Cenário', params: {}, createdAt: Date.now(), updatedAt: Date.now(), ...c })),
       events: d.events.map((e) => ({ metadata: {}, entityId: null, areaId: null, label: null, entityType: e.type.split('.')[0], ...e })),
       settings: isObj(d.settings) ? { ...d.settings, initialized: true } : { initialized: true, firstRunAt: Date.now() },
     },

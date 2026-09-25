@@ -7,6 +7,8 @@ import { openTaskForm } from './task-form.js';
 import { openGoalForm } from './goal-form.js';
 import { openCapture } from './capture.js';
 import { openProgressLog } from './progress-log.js';
+import { financeEnabled } from '../domain/money.js';
+import { openMoneyEntry } from './finance/money-form.js';
 
 export function openAddMenu() {
   const hasGoals = activeGoals().length > 0;
@@ -21,7 +23,8 @@ export function openAddMenu() {
         choice('tasks', 'Tarefa', 'Algo que precisa ser feito.', () => choose(() => openTaskForm())),
         choice('target', 'Meta', 'Algo que deseja alcançar.', () => choose(() => openGoalForm())),
         choice('note', 'Anotação rápida', 'Algo que deseja tirar da cabeça.', () => choose(() => openCapture())),
-        choice('trend', 'Registrar progresso', hasGoals ? 'Atualizar uma meta existente.' : 'Crie uma meta primeiro para registrar progresso.', () => choose(() => openProgressLog()), !hasGoals))),
+        choice('trend', 'Registrar progresso', hasGoals ? 'Atualizar uma meta existente.' : 'Crie uma meta primeiro para registrar progresso.', () => choose(() => openProgressLog()), !hasGoals),
+        financeEnabled() && choice('coins', 'Movimentação financeira', 'Registre dinheiro que entrou ou saiu.', () => choose(() => openMoneyEntry())))),
   });
   return sheet;
 }

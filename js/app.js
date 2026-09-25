@@ -16,6 +16,7 @@ import { tasksView } from './features/tasks.js';
 import { goalsView, goalDetailView } from './features/goals.js';
 import { progressView } from './features/progress.js';
 import { analysisView } from './features/analysis/view.js';
+import { financeView } from './features/finance/view.js';
 import { areaView } from './features/area.js';
 import { settingsView, applyTheme } from './features/settings.js';
 import { openAddMenu } from './features/add-menu.js';
@@ -32,6 +33,7 @@ const VIEWS = {
   metas: { render: (r) => (r.param ? goalDetailView(r) : goalsView(r)), title: 'Metas' },
   progresso: { render: progressView, title: 'Progresso' },
   analises: { render: analysisView, title: 'Análises' },
+  financas: { render: financeView, title: 'Finanças' },
   area: { render: areaView, title: 'Área' },
   ajustes: { render: settingsView, title: 'Ajustes' },
 };

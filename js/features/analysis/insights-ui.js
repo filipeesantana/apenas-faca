@@ -15,6 +15,8 @@ import { openTaskForm } from '../task-form.js';
 import { openReview, weekTaskIds } from '../review.js';
 import { openOrganizer } from '../inbox-organizer.js';
 import { openProgressLog } from '../progress-log.js';
+import { openSimulator } from '../finance/simulator.js';
+import { openMoneyEntry, openIncomeForm } from '../finance/money-form.js';
 import { startWithFeedback, dropWithFeedback } from '../task-actions.js';
 import { exportBackup } from '../../data/backup.js';
 import { toast, toastError } from '../../ui/toast.js';
@@ -34,6 +36,9 @@ export function runInsightAction(a) {
       case 'dropTask': dropWithFeedback(a.id); break;
       case 'organize': openOrganizer(); break;
       case 'logProgress': openProgressLog(a.id); break;
+      case 'simulate': openSimulator(a.id); break;
+      case 'money': openMoneyEntry(); break;
+      case 'income': openIncomeForm(); break;
       case 'newNextStep': { const g = state.goals.get(a.id); openTaskForm({ goalId: a.id, areaId: g?.areaId, nextStep: true }); break; }
       case 'export': exportBackup().then(() => toast('Backup exportado.')).catch((e) => toastError(e, { message: 'Não foi possível gerar o backup.' })); break;
       default:

@@ -193,3 +193,45 @@ export function planRows(weeks, { tick, label }) {
       h('span', { class: 'pr__bar', 'aria-hidden': 'true' }, seg(w.done, 'done'), seg(w.postponed, 'postponed'), seg(w.dropped, 'dropped'), seg(w.pending, 'pending')),
       h('span', { class: 'pr__nums' }, w.planned ? `${w.done} de ${w.planned}` : '—'))));
 }
+
+/**
+ * Trajetórias futuras (simulação): uma linha por caminho, linha do objetivo
+ * e pontos tocáveis com o valor acumulado de cada mês.
+ * series: [{ id, label, points: [{ i, cents }], tone }]
+ */
+export function futureChart(series, { targetCents, maxMonths, label, pointTip, formatValue, monthLabel }) {
+  const W = 1000; const H = 240; const PAD_T = 16; const PAD_B = 6;
+  const months = Math.max(1, maxMonths);
+  const vmax = Math.max(targetCents, ...series.flatMap((s2) => s2.points.map((p) => p.cents)), 1) * 1.06;
+  const x = (i) => (i / months) * W;
+  const y = (v) => H - PAD_B - (v / vmax) * (H - PAD_T - PAD_B);
+  const path = (pts) => pts.map((p, i) => `${i ? 'L' : 'M'}${x(p.i).toFixed(1)},${y(p.cents).toFixed(1)}`).join(' ');
+
+  const dots = [];
+  for (const line of series) {
+    const step = Math.max(1, Math.round(line.points.length / 7));
+    const marks = line.points.filter((p, i) => i > 0 && (i % step === 0 || i === line.points.length - 1));
+    for (const p of marks) {
+      const btn = dataButton(`fut__pt fut__pt--${line.tone}`, pointTip(line, p), null);
+      btn.style.left = `${(x(p.i) / W) * 100}%`;
+      btn.style.top = `${(y(p.cents) / H) * 100}%`;
+      dots.push(btn);
+    }
+  }
+
+  return h('figure', { class: 'fut' },
+    h('figcaption', { class: 'sr-only' }, label),
+    h('div', { class: 'fut__legend', 'aria-hidden': 'true' },
+      series.map((l) => h('span', { class: `lg lg--${l.tone}` }, l.label)),
+      h('span', { class: 'lg lg--target' }, 'Objetivo')),
+    h('div', { class: 'fut__frame' },
+      h('span', { class: 'fut__ylabel', style: { top: `${(y(targetCents) / H) * 100}%` }, 'aria-hidden': 'true' }, formatValue(targetCents)),
+      s('svg', { viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: 'none', class: 'fut__svg', 'aria-hidden': 'true' },
+        s('line', { x1: 0, x2: W, y1: y(targetCents), y2: y(targetCents), class: 'fut__target', 'vector-effect': 'non-scaling-stroke' }),
+        series.map((l) => s('path', { d: path(l.points), class: `fut__line fut__line--${l.tone}`, 'vector-effect': 'non-scaling-stroke' }))),
+      dots),
+    h('div', { class: 'fut__axis', 'aria-hidden': 'true' },
+      h('span', null, 'hoje'),
+      h('span', null, monthLabel(Math.round(months / 2))),
+      h('span', null, monthLabel(months))));
+}

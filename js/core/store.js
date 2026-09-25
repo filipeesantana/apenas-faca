@@ -8,7 +8,7 @@
  */
 import * as db from './db.js';
 
-const MAP_STORES = ['tasks', 'goals', 'areas', 'inbox'];
+const MAP_STORES = ['tasks', 'goals', 'areas', 'inbox', 'money', 'recurring', 'plans', 'scenarios'];
 const listeners = new Set();
 
 export const state = {
@@ -16,6 +16,10 @@ export const state = {
   goals: new Map(),
   areas: new Map(),
   inbox: new Map(),
+  money: new Map(),
+  recurring: new Map(),
+  plans: new Map(),
+  scenarios: new Map(),
   events: [],
   settings: {},
 };
@@ -133,6 +137,10 @@ export async function replaceAll(data) {
       goals: data.goals || [],
       areas: data.areas || [],
       inbox: data.inbox || [],
+      money: data.money || [],
+      recurring: data.recurring || [],
+      plans: data.plans || [],
+      scenarios: data.scenarios || [],
       events: data.events || [],
       settings: Object.entries(data.settings || {}).map(([key, value]) => ({ key, value })),
     },

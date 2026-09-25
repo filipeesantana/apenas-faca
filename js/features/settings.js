@@ -10,6 +10,8 @@ import { listAreas, createArea, renameArea, cycleAreaColor, deleteArea, areaUsag
 import { exportBackup, readBackupFile, applyBackup } from '../data/backup.js';
 import { buildDemoData } from '../data/demo.js';
 import { relativeTime, formatDateTime } from '../utils/dates.js';
+import { financeEnabled, enableFinance, disableFinance, hasMoneyData } from '../domain/money.js';
+import { openRecurringSheet, openIncomeForm } from './finance/money-form.js';
 import { plural } from '../utils/numbers.js';
 
 export const APP_VERSION = '1.0.0';
@@ -59,6 +61,7 @@ export function settingsView() {
     ], s.theme || 'system', (v) => { applyTheme(v); commit({ settings: { theme: v } }).catch(toastError); }, { label: 'Tema' })));
 
   add(view, areasSection());
+  add(view, financeSection());
 
   const fileInput = h('input', {
     type: 'file', accept: 'application/json,.json', class: 'sr-only', id: 'import-file', tabindex: '-1',
@@ -85,7 +88,7 @@ export function settingsView() {
 
   add(view, h('section', { class: 'card section' },
     sectionHead('Seus dados'),
-    h('p', { class: 'muted' }, 'Tudo fica salvo apenas neste navegador, neste aparelho. Nada é enviado para a internet. Faça backups de vez em quando — principalmente antes de limpar dados do navegador ou trocar de aparelho.'),
+    h('p', { class: 'muted' }, 'Tudo fica salvo apenas neste navegador, neste aparelho — inclusive o que você registrar de dinheiro. Nada é enviado para a internet. Faça backups de vez em quando, principalmente antes de limpar os dados do navegador ou trocar de aparelho.'),
     h('p', { class: 'small' }, s.lastExportAt ? `Último backup: ${relativeTime(s.lastExportAt)}.` : 'Você ainda não fez nenhum backup.'),
     h('div', { class: 'row-actions' },
       button('Exportar backup', { variant: 'primary', icon: 'download', onClick: () => exportBackup().then(() => toast('Backup exportado.')).catch(toastError) }),
@@ -124,6 +127,31 @@ export function settingsView() {
     s.migratedFromV1At && h('p', { class: 'muted small' }, 'Seus dados da versão anterior (Apenas, Faça.) foram preservados.'),
     h('p', { class: 'muted small' }, 'Desenvolvido por Filipe Santana')));
   return view;
+}
+
+/** Finanças: opcional, explicada e reversível. Desligar não apaga nada. */
+function financeSection() {
+  const on = financeEnabled();
+  return h('section', { class: 'card section' },
+    sectionHead('Finanças'),
+    h('p', { class: 'muted' }, 'Uma camada opcional para quando uma meta ou uma decisão envolve dinheiro: planejar quanto guardar por mês, simular caminhos e registrar o que entra e o que sai. Ela aparece sozinha quando passa a ser útil.'),
+    h('p', { class: 'muted small' }, 'Os dados financeiros ficam neste navegador, junto com o resto dos seus dados. Sem conta, sem banco conectado, sem envio para a internet.'),
+    h('div', { class: 'row-actions' },
+      on
+        ? [
+          button('Informar renda', { onClick: () => openIncomeForm() }),
+          button('Entradas e saídas recorrentes', { onClick: () => openRecurringSheet() }),
+          h('a', { class: 'btn btn--secondary', href: '#/financas' }, icon('coins', { size: 18 }), h('span', null, 'Abrir Finanças')),
+          button('Desativar', { variant: 'ghost', onClick: async () => {
+            const ok = await confirmDialog({
+              title: 'Desativar a camada financeira?',
+              message: hasMoneyData() ? 'Nada é apagado: o que você registrou continua guardado e volta assim que você ativar de novo.' : 'Você pode ativar de novo quando quiser.',
+              confirmLabel: 'Desativar',
+            });
+            if (ok) { await disableFinance(); go('ajustes'); toast('Finanças desativadas. Nada foi apagado.'); }
+          } }),
+        ]
+        : button('Ativar finanças', { variant: 'primary', icon: 'coins', onClick: async () => { await enableFinance('ajustes'); go('financas'); toast('Finanças ativadas. Comece informando a renda ou registrando uma movimentação.'); } })));
 }
 
 function areasSection() {

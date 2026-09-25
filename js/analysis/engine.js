@@ -10,6 +10,7 @@ import { openTasks, isOverdue, isOpen, tasksForGoal } from '../domain/tasks.js';
 import { activeGoals, progressOf, formatGoalValue, lastMovementAt, paceOf } from '../domain/goals.js';
 import { getArea, listAreas } from '../domain/areas.js';
 import { plannedVsDone, recentCapacity, thisWeekLoad } from '../domain/stats.js';
+import { allMoney, financeEnabled, incomeMonthly, categoryLabel, natureLabel, NATURES, flexMargin } from '../domain/money.js';
 import { startOfDayTs, today, addDays, startOfWeek } from '../utils/dates.js';
 import { formatMoney, formatMinutes, formatPercent, plural } from '../utils/numbers.js';
 import { buckets, firstDataDay } from './periods.js';
@@ -33,11 +34,16 @@ export const SCOPES = {
   area: { label: 'Área', desc: 'Trabalho, Estudos, Dinheiro, Saúde ou outra área.' },
   meta: { label: 'Meta', desc: 'O progresso de uma meta específica.' },
   tarefas: { label: 'Tarefas', desc: 'Execução, atrasos e adiamentos.' },
+  dinheiro: { label: 'Dinheiro', desc: 'O que entrou, o que saiu e o que foi para metas.', finance: true },
 };
+
+/** Escopos disponíveis agora (Dinheiro só aparece com a camada financeira ativada). */
+export const availableScopes = () => Object.entries(SCOPES).filter(([, s2]) => !s2.finance || financeEnabled());
 
 /** Normaliza a seleção (ex.: área apagada volta para "Tudo"). */
 export function normalizeSelection(sel) {
   const s = { ...sel };
+  if (s.scope === 'dinheiro' && !financeEnabled()) s.scope = 'tudo';
   if (s.scope === 'area' && !getArea(s.areaId)) s.areaId = listAreas()[0]?.id || null;
   if (s.scope === 'area' && !s.areaId) s.scope = 'tudo';
   if (s.scope === 'meta' && !state.goals.has(s.goalId)) s.goalId = activeGoals()[0]?.id || [...state.goals.keys()][0] || null;
@@ -54,17 +60,20 @@ export function scopeLabel(sel) {
 /** Predicados de escopo para tarefas, eventos e metas. */
 export function scopeMatchers(sel) {
   const taskOk = (t) => {
+    if (sel.scope === 'dinheiro') return false;
     if (sel.scope === 'area') return t.areaId === sel.areaId;
     if (sel.scope === 'meta') return t.goalId === sel.goalId;
     return true;
   };
   const eventOk = (e) => {
+    if (sel.scope === 'dinheiro') return e.entityType === 'money';
     if (sel.scope === 'tarefas') return e.entityType === 'task';
     if (sel.scope === 'area') return e.areaId === sel.areaId;
     if (sel.scope === 'meta') return e.entityId === sel.goalId || (e.entityType === 'task' && (e.metadata?.goalId === sel.goalId || state.tasks.get(e.entityId)?.goalId === sel.goalId));
     return true;
   };
   const goalOk = (g) => {
+    if (sel.scope === 'dinheiro') return g.type === 'money';
     if (sel.scope === 'tarefas') return false;
     if (sel.scope === 'area') return g.areaId === sel.areaId;
     if (sel.scope === 'meta') return g.id === sel.goalId;
@@ -123,6 +132,34 @@ export function tally(sel, from, to) {
 /** Existem dados que cubram o período? (evita comparar com o "nada"). */
 export const hasDataFor = (p) => !!state.events.length && p.to >= firstDataDay();
 
+/* ---------- Dinheiro ---------- */
+
+/** Entradas, saídas e destinação a metas num intervalo de datas (pelas datas das movimentações). */
+export function moneyRange(from, to) {
+  return memo(`money|${from}|${to}`, () => {
+    const byCategory = new Map(); const byNature = new Map();
+    let income = 0; let spent = 0; let flexible = 0; let count = 0;
+    for (const t of allMoney()) {
+      if (t.date < from || t.date > to) continue;
+      count++;
+      if (t.kind === 'in') { income += t.amountCents; continue; }
+      spent += t.amountCents;
+      byCategory.set(t.categoryId, (byCategory.get(t.categoryId) || 0) + t.amountCents);
+      byNature.set(t.nature || 'importante', (byNature.get(t.nature || 'importante') || 0) + t.amountCents);
+      if (flexMargin(t.flex) > 0) flexible += t.amountCents;
+    }
+    const fromTs = startOfDayTs(from); const toTs = startOfDayTs(addDays(to, 1));
+    let toGoals = 0;
+    for (const e of state.events) {
+      if (e.type !== 'goal.progress' || e.createdAt < fromTs || e.createdAt >= toTs) continue;
+      const type = e.metadata?.goalType || state.goals.get(e.entityId)?.type;
+      if (type !== 'money' || e.metadata?.kind === 'correction' || !(e.metadata.delta > 0)) continue;
+      toGoals += e.metadata.delta;
+    }
+    return { income, spent, toGoals, flexible, count, byCategory, byNature, available: income - spent - toGoals };
+  });
+}
+
 /* ---------- Resumo ---------- */
 
 function nowState(sel) {
@@ -151,6 +188,23 @@ export function summary(sel, period, prev = null) {
       }
       m.push(o);
     };
+
+    if (sel.scope === 'dinheiro') {
+      const c = moneyRange(period.from, period.to);
+      const o = prev ? moneyRange(prev.from, prev.to) : null;
+      const income = incomeMonthly();
+      const money = (v) => formatMoney(v);
+      add('in', 'Entrou', c.income, money(c.income), { prevValue: o?.income, prevDisplay: o ? money(o.income) : undefined, fmt: money });
+      add('out', 'Saiu', c.spent, money(c.spent), { prevValue: o?.spent, prevDisplay: o ? money(o.spent) : undefined, fmt: money });
+      add('goals', 'Destinado a metas', c.toGoals, money(c.toGoals), { prevValue: o?.toGoals, prevDisplay: o ? money(o.toGoals) : undefined, fmt: money, href: '#/financas' });
+      add('avail', 'Disponível', c.available, money(c.available), {
+        prevValue: o?.available, prevDisplay: o ? money(o.available) : undefined, fmt: money, accent: true,
+        warn: c.available < 0, hint: income.has && c.income > 0 ? `${formatPercent(c.available / c.income)} do que entrou` : null,
+      });
+      add('flex', 'Marcados como ajustáveis', c.flexible, money(c.flexible), { prevValue: o?.flexible, prevDisplay: o ? money(o.flexible) : undefined, fmt: money, detail: true, hint: 'definido por você' });
+      add('count', 'Movimentações', c.count, String(c.count), { prevValue: o?.count, detail: true });
+      return { metrics: m, cur: c, old: o, now: nowState(sel) };
+    }
 
     if (sel.scope === 'meta') {
       const g = state.goals.get(sel.goalId);
@@ -206,6 +260,15 @@ const listJoin = (arr) => (arr.length <= 1 ? arr.join('') : `${arr.slice(0, -1).
 
 export function sentence(sel, sum) {
   const { cur, now } = sum;
+  if (sel.scope === 'dinheiro') {
+    if (!cur.count && !cur.toGoals) return 'Nenhuma movimentação foi registrada neste período.';
+    const parts = [];
+    if (cur.income) parts.push(`entraram ${formatMoney(cur.income)}`);
+    if (cur.spent) parts.push(`saíram ${formatMoney(cur.spent)}`);
+    if (cur.toGoals) parts.push(`${formatMoney(cur.toGoals)} foram para metas`);
+    const share = cur.income > 0 && cur.toGoals > 0 ? ` As metas receberam ${formatPercent(cur.toGoals / cur.income)} do que entrou.` : '';
+    return `Neste período, ${listJoin(parts)}.${share}`;
+  }
   if (sel.scope === 'meta') {
     const g = state.goals.get(sel.goalId);
     const p = progressOf(g);
@@ -235,6 +298,12 @@ export function sentence(sel, sum) {
 export function compareSentence(sel, sum, prevLabel) {
   const { cur, old } = sum;
   if (!old) return null;
+  if (sel.scope === 'dinheiro') {
+    const d = cur.spent - old.spent;
+    const g = cur.toGoals - old.toGoals;
+    if (!cur.count && !old.count) return `Não houve movimentações registradas neste período nem no ${prevLabel}.`;
+    return `Saíram ${formatMoney(cur.spent)} neste período e ${formatMoney(old.spent)} no ${prevLabel} (${d >= 0 ? '+' : '−'} ${formatMoney(Math.abs(d))}). Para metas: ${formatMoney(cur.toGoals)} contra ${formatMoney(old.toGoals)} (${g >= 0 ? '+' : '−'} ${formatMoney(Math.abs(g))}).`;
+  }
   if (sel.scope === 'meta') {
     const g = state.goals.get(sel.goalId);
     const f = (v) => (g.type === 'steps' ? plural(v, 'etapa', 'etapas') : formatGoalValue(g, Math.abs(v)));
@@ -273,6 +342,26 @@ export function series(sel, period, gran) {
     }
     return bs.map((b) => ({ ...b, completed: b.completed.size }));
   });
+}
+
+/** Série de dinheiro por intervalo: entradas, saídas e destinação a metas. */
+export function moneySeries(sel, period, gran) {
+  return memo(`mser|${period.from}|${period.to}|${gran}`, () => buckets(period.from, period.to, gran).map((b) => {
+    const to = addDays(b.end, -1);
+    const r = moneyRange(b.start, to);
+    return { ...b, income: r.income, spent: r.spent, toGoals: r.toGoals };
+  }));
+}
+
+/** Distribuição de saídas por categoria e por natureza no período. */
+export function moneyBreakdown(period) {
+  const r = moneyRange(period.from, period.to);
+  return {
+    total: r.spent,
+    categories: [...r.byCategory.entries()].map(([id, value]) => ({ id, label: categoryLabel(id), value })).sort((a, b) => b.value - a.value),
+    natures: NATURES.map((n) => ({ id: n.id, label: natureLabel(n.id), value: r.byNature.get(n.id) || 0 })).filter((x) => x.value > 0),
+    flexible: r.flexible,
+  };
 }
 
 /** Valor acumulado de uma meta ao fim de cada intervalo. */

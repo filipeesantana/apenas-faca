@@ -29,7 +29,7 @@ export function openSheet({ title = '', render, onClose, variant = 'side', focus
     class: ['sheet', `sheet--${variant}`, className], role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId, tabindex: '-1',
   },
   h('div', { class: 'sheet__handle', 'aria-hidden': 'true' }),
-  h('header', { class: 'sheet__header' }, titleEl,
+  h('div', { class: 'sheet__header' }, titleEl,
     h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Fechar', onClick: () => api.close() }, icon('x'))),
   body);
   const root = h('div', { class: ['sheet-root', `sheet-root--${variant}`] },

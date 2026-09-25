@@ -19,14 +19,15 @@ const one = (n, sing, plur) => (Math.abs(n - 1) < 1e-9 ? sing : plur);
 
 const ADAPTERS = {
   money: {
-    horizons: [6, 12, 18, 24, 36].map((m) => ({ id: `m${m}`, label: `${m} meses`, months: m })),
+    horizons: [3, 6, 12, 18, 24, 36, 48].map((m) => ({ id: `m${m}`, label: `${m} meses`, months: m })),
     /** Ritmo principal e secundário para um prazo. Mensal exato (como uma parcela), semanal aproximado. */
     rate(remaining, days, months) {
       const perMonth = months ? remaining / months : (remaining / days) * MONTH_DAYS;
       const perWeek = (remaining / days) * 7;
+      const perDay = remaining / days;
       return {
         primary: `${formatMoney(Math.round(perMonth))} por mês`,
-        secondary: `aproximadamente ${formatMoneyApprox(perWeek)} por semana`,
+        secondary: `equivale a cerca de ${formatMoneyApprox(perWeek)} por semana ou ${formatMoneyApprox(perDay)} por dia (equivalências aproximadas, não uma sugestão de guardar todo dia)`,
         short: `${formatMoney(Math.round(perMonth))}/mês`,
       };
     },

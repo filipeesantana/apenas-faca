@@ -25,6 +25,8 @@ import { pickCopy } from '../content/microcopy.js';
 import { openGoalForm } from './goal-form.js';
 import { openTaskForm } from './task-form.js';
 import { taskRow, taskList } from './task-row.js';
+import { goalFinanceBlock } from './finance/goal-block.js';
+import { openSimulator } from './finance/simulator.js';
 import { progressEntry, progressFeedback } from './progress-log.js';
 
 /* ======================= Lista ======================= */
@@ -134,6 +136,7 @@ export function goalDetailView(route) {
           setTimeout(() => box?.querySelector('input:not([type=hidden])')?.focus({ preventScroll: true }), 250);
         },
       }),
+      active && g.type === 'money' && progressOf(g).remaining > 0 && button('Simular caminho', { icon: 'lens', onClick: () => openSimulator(g.id) }),
       active && g.type === 'steps' && button('Marcar etapa', { variant: 'primary', icon: 'check', onClick: () => document.querySelector('.steps .step:not(.is-done) .check')?.focus() }))));
 
   const layout = h('div', { class: 'goal-layout' });
@@ -143,6 +146,8 @@ export function goalDetailView(route) {
   add(view, layout);
 
   add(main, summaryCard(g, p));
+  const fin = goalFinanceBlock(g);
+  if (fin) add(main, fin);
   if (active && g.type !== 'steps') add(main, h('section', { class: 'card section', id: 'registrar' }, sectionHead('Registrar progresso'), progressEntry(g, { compact: true })));
   if (active) add(main, nextStepSection(g));
   if (g.type === 'steps') add(main, stepsSection(g));

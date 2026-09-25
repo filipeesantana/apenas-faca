@@ -10,6 +10,7 @@ import { openSheet } from '../ui/sheet.js';
 import { state } from '../core/store.js';
 import { go } from '../core/router.js';
 import { openInboxItems } from '../domain/inbox.js';
+import { financeEnabled } from '../domain/money.js';
 import { openAddMenu } from './add-menu.js';
 
 const NAV = [
@@ -24,7 +25,11 @@ const FOOT = [
   { id: 'ajuda', label: 'Ajuda', icon: 'info' },
   { id: 'ajustes', label: 'Ajustes', icon: 'settings' },
 ];
-const MORE = ['anotacoes', 'progresso', 'analises', 'ajuda', 'ajustes'];
+const FINANCE = { id: 'financas', label: 'Finanças', icon: 'coins' };
+const MORE = ['anotacoes', 'progresso', 'analises', 'financas', 'ajuda', 'ajustes'];
+
+/** A camada financeira só entra na navegação depois de ativada. */
+const navItems = () => (financeEnabled() ? [...NAV, FINANCE] : NAV);
 
 function badge() { return h('span', { class: 'badge', 'data-badge': 'inbox', hidden: true }); }
 
@@ -38,7 +43,7 @@ export function buildShell() {
     h('a', { class: 'brand', href: '#/inicio', 'aria-label': 'Norte — Início' }, brandMark()),
     h('button', { type: 'button', class: 'btn btn--accent btn--block add-btn', title: 'Adicionar tarefa, meta, anotação ou progresso (atalho: N)', onClick: () => openAddMenu() },
       icon('plus'), h('span', null, 'Adicionar')),
-    h('nav', { class: 'side-nav', 'aria-label': 'Principal' }, h('ul', null, NAV.map((item) => h('li', null, sideLink(item))))),
+    h('nav', { class: 'side-nav', 'aria-label': 'Principal' }, h('ul', null, navItems().map((item) => h('li', null, sideLink(item))))),
     h('div', { class: 'sidebar__foot' },
       h('div', { class: 'demo-flag', 'data-demo': '', hidden: true }, icon('layers', { size: 14 }), 'Dados de exemplo'),
       h('ul', null, FOOT.map((item) => h('li', null, sideLink(item)))),
@@ -71,7 +76,7 @@ function openMore() {
   const sheet = openSheet({
     title: 'Mais',
     render: () => h('div', { class: 'more' }, h('ul', { class: 'more-list' },
-      [...NAV.slice(3), ...FOOT].map((item) => h('li', null,
+      [...navItems().slice(3), ...FOOT].map((item) => h('li', null,
         h('button', { type: 'button', class: 'more-link', onClick: () => { sheet.close(); go(item.id); } },
           icon(item.icon, { size: 20 }), h('span', null, item.label),
           item.id === 'anotacoes' && openInboxItems().length ? h('span', { class: 'badge' }, String(openInboxItems().length)) : null,
@@ -87,6 +92,10 @@ export function updateShell(route) {
     if (el.tagName === 'A') { if (on) el.setAttribute('aria-current', 'page'); else el.removeAttribute('aria-current'); }
     el.classList.toggle('is-active', on);
   });
+  // A entrada de Finanças aparece assim que a camada financeira é ativada.
+  const sideNav = document.querySelector('.side-nav ul');
+  if (sideNav && financeEnabled() && !sideNav.querySelector('[data-nav="financas"]')) sideNav.append(h('li', null, sideLink(FINANCE)));
+  if (sideNav && !financeEnabled()) sideNav.querySelector('[data-nav="financas"]')?.closest('li')?.remove();
   const n = openInboxItems().length;
   document.querySelectorAll('[data-badge="inbox"]').forEach((b) => {
     b.hidden = n === 0;

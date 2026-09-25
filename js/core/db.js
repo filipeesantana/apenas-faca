@@ -5,8 +5,8 @@
  */
 
 const DB_NAME = 'apenas-faca';
-export const DB_VERSION = 2;
-export const STORES = ['tasks', 'goals', 'areas', 'inbox', 'events', 'settings'];
+export const DB_VERSION = 3;
+export const STORES = ['tasks', 'goals', 'areas', 'inbox', 'events', 'settings', 'money', 'recurring', 'plans', 'scenarios'];
 
 let dbPromise = null;
 
@@ -37,6 +37,15 @@ function upgrade(db, oldVersion, tx) {
     eachRecord(tx.objectStore('tasks'), (t) => ({ estimateMin: null, nextStep: false, ...t, importance: t.importance || 'normal' }));
     eachRecord(tx.objectStore('goals'), (g) => ({ unit: '', ...g }));
     tx.objectStore('settings').put({ key: 'migratedFromV1At', value: Date.now() });
+  }
+  if (oldVersion < 3) {
+    // v3: camada financeira opcional. Nada muda para quem não a usa —
+    // os depósitos ficam vazios e nenhum dado existente é tocado.
+    const money = db.createObjectStore('money', { keyPath: 'id' });
+    money.createIndex('date', 'date');
+    db.createObjectStore('recurring', { keyPath: 'id' });
+    db.createObjectStore('plans', { keyPath: 'id' }).createIndex('goalId', 'goalId');
+    db.createObjectStore('scenarios', { keyPath: 'id' }).createIndex('goalId', 'goalId');
   }
 }
 

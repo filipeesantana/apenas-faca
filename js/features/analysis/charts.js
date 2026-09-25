@@ -8,22 +8,25 @@ import { progressBar, button } from '../../ui/components.js';
 import { columnChart, pairedChart, planRows, hbarList, projectionChart, scenarioList } from '../../ui/charts.js';
 import { labelWithHelp, HELP } from '../../ui/help.js';
 import { eventsOf } from '../../core/events.js';
-import { series, goalCumulative, planWeeks, capacity, goalsMovement, areaDistribution, dueBreakdown, scopeMatchers } from '../../analysis/engine.js';
+import { series, goalCumulative, planWeeks, capacity, goalsMovement, areaDistribution, dueBreakdown, scopeMatchers, moneySeries, moneyBreakdown, moneyRange } from '../../analysis/engine.js';
+import { incomeMonthly, monthLabel, thisMonth } from '../../domain/money.js';
+import { plansStatus } from '../../domain/finance-plan.js';
 import { progressOf, formatGoalValue, paceOf } from '../../domain/goals.js';
 import { rateText, projectionModel, horizonScenarios } from '../../domain/planning.js';
 import { openTasks } from '../../domain/tasks.js';
 import { formatDay, formatMonthShort, formatMonthYear, dayKey, relativeTime, DAY } from '../../utils/dates.js';
-import { plural, formatMoney, formatMinutes } from '../../utils/numbers.js';
+import { plural, formatMoney, formatMinutes, formatPercent } from '../../utils/numbers.js';
 
 /** Abas disponíveis por escopo (modo Detalhado). A primeira é a do modo Essencial. */
 export function tabsFor(scope) {
+  if (scope === 'dinheiro') return [['fluxodinheiro', 'Entrou × saiu'], ['categorias', 'Categorias'], ['natureza', 'Natureza'], ['planometas', 'Planejado × realizado']];
   if (scope === 'meta') return [['evolucao', 'Evolução'], ['ritmo', 'Ritmo'], ['cenarios', 'Cenários'], ['registros', 'Registros']];
   if (scope === 'tarefas') return [['fluxo', 'Criadas × concluídas'], ['plano', 'Planejado × realizado'], ['prazos', 'Prazos'], ['adiamentos', 'Adiamentos']];
   if (scope === 'area') return [['atividade', 'Atividade'], ['fluxo', 'Tarefas'], ['metas', 'Metas']];
   return [['atividade', 'Atividade'], ['fluxo', 'Tarefas'], ['plano', 'Planejado × realizado'], ['metas', 'Metas'], ['areas', 'Áreas']];
 }
 /** Abas que dependem de agrupamento por tempo. */
-export const TIME_TABS = new Set(['atividade', 'fluxo', 'registros', 'adiamentos']);
+export const TIME_TABS = new Set(['atividade', 'fluxo', 'registros', 'adiamentos', 'fluxodinheiro']);
 
 function panel(question, body, reading, { help } = {}) {
   return h('div', { class: 'viz' },
@@ -210,6 +213,68 @@ function registros(ctx) {
     `${plural(total, 'registro', 'registros')} neste período, somando ${adv >= 0 ? '+' : '−'} ${fmtAdv(adv)}.`);
 }
 
-const RENDER = { atividade, fluxo, plano, metas, areas, prazos, adiamentos, evolucao, ritmo, cenarios, registros };
+/* ---------- Dinheiro ---------- */
+
+function fluxodinheiro(ctx) {
+  const s = moneySeries(ctx.sel, ctx.period, ctx.gran);
+  const income = s.reduce((a, b) => a + b.income, 0);
+  const spent = s.reduce((a, b) => a + b.spent, 0);
+  const goals = s.reduce((a, b) => a + b.toGoals, 0);
+  if (!income && !spent && !goals) {
+    return panel('Entrou mais ou menos do que saiu?', emptyViz('Nenhuma movimentação registrada neste período.', ctx.emptyActions()), null);
+  }
+  const t = ticks(s);
+  const saldo = income - spent - goals;
+  return panel('Entrou mais ou menos do que saiu?',
+    pairedChart(s, {
+      key: `fd-${ctx.gran}-${s.length}`, label: `${formatMoney(income)} entraram e ${formatMoney(spent)} saíram.`,
+      a: { key: 'income', label: 'Entrou' }, b: { key: 'spent', label: 'Saiu' }, tick: t,
+      tip: (b) => `${b.long}: entrou ${formatMoney(b.income)}, saiu ${formatMoney(b.spent)}${b.toGoals ? `, metas ${formatMoney(b.toGoals)}` : ''}`,
+    }),
+    `Entraram ${formatMoney(income)} e saíram ${formatMoney(spent)}${goals ? `, além de ${formatMoney(goals)} destinados a metas` : ''}. Diferença: ${saldo >= 0 ? '+' : '−'} ${formatMoney(Math.abs(saldo))}.`,
+    { help: HELP.disponivel });
+}
+
+function categorias(ctx) {
+  const d = moneyBreakdown(ctx.period);
+  if (!d.total) return panel('Para onde o dinheiro foi?', emptyViz('Você ainda não registrou gastos suficientes neste período para ver a distribuição.', ctx.emptyActions()), null);
+  const top = d.categories[0];
+  return panel('Para onde o dinheiro foi?',
+    hbarList(d.categories, { label: 'Saídas por categoria', valueText: (r) => `${formatMoney(r.value)} · ${formatPercent(r.value / d.total)}` }),
+    `${top.label} representou ${formatPercent(top.value / d.total)} do que saiu neste período (${formatMoney(top.value)}).`);
+}
+
+function natureza(ctx) {
+  const d = moneyBreakdown(ctx.period);
+  if (!d.natures.length) return panel('Como você classificou seus gastos?', emptyViz('Sem gastos registrados neste período.', ctx.emptyActions()), null, { help: HELP.natureza });
+  const income = incomeMonthly();
+  const lines = d.natures.map((n) => `${n.label}: ${formatMoney(n.value)} (${formatPercent(n.value / d.total)})`);
+  return panel('Como você classificou seus gastos?',
+    hbarList(d.natures, { label: 'Saídas por natureza', valueText: (r) => `${formatMoney(r.value)} · ${formatPercent(r.value / d.total)}` }),
+    `${lines.join(' · ')}. Essa leitura é sua: o Norte não decide o que é necessário.${d.flexible ? ` Você marcou ${formatMoney(d.flexible)} como ajustáveis.` : ''}${income.has ? '' : ''}`,
+    { help: HELP.natureza });
+}
+
+function planometas(ctx) {
+  const rows = plansStatus(thisMonth());
+  if (!rows.length) {
+    return panel('O planejado para as metas está acontecendo?',
+      emptyViz('Nenhuma meta tem plano financeiro. Em uma meta de dinheiro, “Simular caminho” ajuda a definir quanto por mês.',
+        [button('Ver metas', { size: 'sm', onClick: () => { location.hash = '#/metas'; } })]), null, { help: HELP.planoMeta });
+  }
+  const planned = rows.reduce((a, r) => a + r.planned, 0);
+  const done = rows.reduce((a, r) => a + r.done, 0);
+  const r0 = moneyRange(ctx.period.from, ctx.period.to);
+  return panel('O planejado para as metas está acontecendo?',
+    h('ul', { class: 'goal-move' }, rows.map((r) => h('li', null, h('a', { class: 'goal-move__row', href: `#/metas/${r.goal.id}` },
+      h('span', { class: 'goal-move__title' }, r.goal.title),
+      progressBar(r.planned ? Math.min(1, r.done / r.planned) : 0, { key: `pm-${r.goal.id}`, size: 'sm', label: `Planejado × realizado de ${r.goal.title}`, tone: r.missing > 0 ? 'warn' : null }),
+      h('span', { class: 'goal-move__info' }, `${formatMoney(r.done)} de ${formatMoney(r.planned)} em ${monthLabel(thisMonth())}`),
+      h('span', { class: 'goal-move__pct' }, r.planned ? formatPercent(Math.min(1, r.done / r.planned)) : '—'))))),
+    `Em ${monthLabel(thisMonth())}, o planejado soma ${formatMoney(planned)} e o registrado ${formatMoney(done)}.${r0.toGoals ? ` No período analisado, ${formatMoney(r0.toGoals)} foram para metas.` : ''}`,
+    { help: HELP.planejadoReal });
+}
+
+const RENDER = { fluxodinheiro, categorias, natureza, planometas, atividade, fluxo, plano, metas, areas, prazos, adiamentos, evolucao, ritmo, cenarios, registros };
 export const renderViz = (tab, ctx) => (RENDER[tab] || atividade)(ctx);
 

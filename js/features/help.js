@@ -43,8 +43,18 @@ const TOPICS = [
     'A média recente usa seus registros dos últimos até 90 dias. Ela só aparece com pelo menos 3 semanas de meta e 2 registros.',
     'Projeções são estimativas. Elas mudam conforme você registra.',
   ]],
+  ['E a parte financeira?', [
+    'Ela é opcional e aparece quando passa a ser útil: ao criar uma meta de dinheiro, o Norte oferece planejar como chegar lá; ao informar sua renda ou registrar uma movimentação, a tela Finanças aparece no menu.',
+    'Em uma meta de dinheiro, “Planejar” mostra quanto seria necessário por mês para cada prazo. “Simular caminho” permite brincar com valores, comparar caminhos, incluir um aporte extra ou uma retirada e ver quando cada um chega lá.',
+    'Simular nunca altera seus dados. Só o botão “Usar como plano” guarda alguma coisa — e mesmo assim só o valor que você decidiu destinar por mês.',
+  ]],
+  ['O Norte diz onde devo economizar?', [
+    'Não. Ele não classifica gastos como supérfluos nem decide o que cortar: R$ 500 de transporte podem ser trabalho, consulta médica ou lazer — só você sabe.',
+    'Ao registrar um gasto, você indica como o considera (necessário, importante, flexível, pontual) e se aceitaria ajustá-lo numa simulação. O que você marca como “não mexer” nunca aparece em simulações de redução.',
+    'Percentuais servem para dar perspectiva (“Lazer representou 14% da renda registrada”), não para julgar.',
+  ]],
   ['Onde meus dados ficam armazenados?', [
-    'Somente neste navegador, neste aparelho (tecnologia IndexedDB). Não existe conta, servidor nem envio de dados.',
+    'Somente neste navegador, neste aparelho (tecnologia IndexedDB) — inclusive os dados financeiros. Não existe conta, servidor, banco conectado nem envio de dados.',
     'Se você limpar os dados do navegador ou trocar de aparelho, os dados não vão junto — por isso existe o backup.',
   ]],
   ['Existem atalhos de teclado?', [

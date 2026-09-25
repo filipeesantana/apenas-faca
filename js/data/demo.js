@@ -3,7 +3,7 @@
  * Só são carregados quando o usuário pede (Ajustes ou primeira tela).
  */
 import { uid } from '../utils/helpers.js';
-import { DAY, today, addDays, addMonths, parseISODate, endOfWeek } from '../utils/dates.js';
+import { DAY, today, addDays, addMonths, parseISODate, endOfWeek, toISODate } from '../utils/dates.js';
 import { makeEvent } from '../core/events.js';
 import { buildDefaultAreas } from '../domain/areas.js';
 import { MILESTONES } from '../domain/goals.js';
@@ -177,8 +177,61 @@ export function buildDemoData() {
     return item;
   });
 
+  /* ---------- Camada financeira (exemplo) ---------- */
+  const money = [];
+  const recurring = [];
+  const plans = [];
+
+  const salary = 350000;
+  recurring.push({
+    id: uid(), kind: 'in', amountCents: salary, label: 'Salário da empresa', categoryId: 'salario',
+    nature: null, flex: null, freq: 'month', dayOfMonth: 5, variable: false, active: true, createdAt: at(80), updatedAt: at(80),
+  });
+
+  // Três meses de movimentações: valores estáveis, com a leitura de natureza e margem
+  // feita "pelo usuário" — é isso que permite simular ajustes sem o Norte julgar nada.
+  const MONTHLY = [
+    ['in', salary, 'salario', 'Salário', null, null, 5],
+    ['out', 110000, 'moradia', 'Aluguel', 'necessario', 'none', 6],
+    ['out', 62000, 'alimentacao', 'Mercado do mês', 'necessario', 'small', 8],
+    ['out', 40000, 'alimentacao', 'Delivery', 'flexivel', 'moderate', 14],
+    ['out', 26000, 'transporte', 'Transporte para o trabalho', 'necessario', 'none', 10],
+    ['out', 9000, 'saude', 'Farmácia', 'necessario', 'none', 12],
+    ['out', 12000, 'assinaturas', 'Assinaturas de streaming', 'flexivel', 'high', 15],
+    ['out', 18000, 'lazer', 'Lazer', 'importante', 'small', 18],
+    ['out', 15000, 'estudos', 'Curso online', 'importante', 'none', 20],
+  ];
+  const todayNum = Number(T.slice(8, 10));
+  for (let back = 2; back >= 0; back--) {
+    const monthStart = addMonths(`${T.slice(0, 7)}-01`, -back);
+    for (const [kind, amountCents, categoryId, label, nature, flex, day] of MONTHLY) {
+      if (back === 0 && day > todayNum) continue; // o mês corrente ainda está acontecendo
+      const date = toISODate(parseISODate(`${monthStart.slice(0, 7)}-${String(day).padStart(2, '0')}`));
+      const ts = parseISODate(date).getTime() + 11 * 3600000;
+      const variation = kind === 'out' && categoryId === 'alimentacao' ? (back - 1) * 3000 : 0;
+      const t = {
+        id: uid(), kind, amountCents: amountCents + variation, date, categoryId, label,
+        nature, flex, recurringId: null, note: '', createdAt: ts, updatedAt: ts,
+      };
+      money.push(t);
+      events.push(makeEvent(kind === 'in' ? 'money.in' : 'money.out', { id: t.id, title: label },
+        { amountCents: t.amountCents, categoryId, nature, flex, date }, ts));
+    }
+  }
+
+  plans.push({
+    id: uid(), goalId: car.id, mode: 'fixed', amountCents: 80000, percent: 0, months: 40,
+    note: '', source: 'simulator', status: 'active', startMonth: addMonths(`${T.slice(0, 7)}-01`, -2).slice(0, 7),
+    createdAt: at(60), updatedAt: at(60),
+  });
+
+  events.sort((a, b) => a.createdAt - b.createdAt);
+
   return {
-    tasks, goals, areas, inbox, events,
-    settings: { initialized: true, firstRunAt: now - 120 * DAY, demo: true },
+    tasks, goals, areas, inbox, events, money, recurring, plans, scenarios: [],
+    settings: {
+      initialized: true, firstRunAt: now - 120 * DAY, demo: true,
+      finance: { enabled: true, activatedAt: now - 80 * DAY, reason: 'exemplo' },
+    },
   };
 }
